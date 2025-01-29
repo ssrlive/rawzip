@@ -1,0 +1,21 @@
+[package]
+name = "rawzip"
+version = "0.0.1"
+authors = ["Nick Babcock <nbabcock19@hotmail.com>"]
+edition = "2021"
+description = "A Zip archive reader and writer"
+repository = "https://github.com/nickbabcock/rawzip"
+readme = "README.md"
+license = "MIT"
+keywords = ["zip", "archive"]
+categories = ["filesystem", "compression", "parser-implementations"]
+include = ["src/**/*.rs"]
+rust-version = "1.70"
+
+[dependencies]
+
+[dev-dependencies]
+quickcheck = "1.0.3"
+quickcheck_macros = "1.0.0"
+flate2 = { version = "1.0.35" }
+rstest = "0.24.0"

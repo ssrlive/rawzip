@@ -1,0 +1,22 @@
+[package]
+name = "rawzip-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+flate2 = "1.0.35"
+libfuzzer-sys = "0.4"
+
+[dependencies.rawzip]
+path = ".."
+
+[[bin]]
+name = "fuzz_zip"
+path = "fuzz_targets/fuzz_zip.rs"
+test = false
+doc = false
+bench = false
