@@ -45,7 +45,6 @@ static CRC_TABLE: [[u32; 256]; 16] = gen_crc_table();
 /// Benchmarks showed that function should be fast enough for all uses, only
 /// losing to `crc32fast` at the largest payload size and even then eking out a
 /// single digit performance improvement.
-#[inline]
 pub fn crc32(data: &[u8]) -> u32 {
     crc32_chunk(data, 0)
 }
