@@ -1,6 +1,6 @@
 # Rawzip
 
-**🚧 👷 This is pre-alpha prior a v0.1.0. Features are missing. Will eat your homework 👷 🚧**
+**🚧 👷 This is pre-alpha prior to v0.1.0. Features are missing. Will eat your homework 👷 🚧**
 
 A low-level Zip archive reader and writer. Pure Rust. Zero dependencies. Zero unsafe. Fast.
 
