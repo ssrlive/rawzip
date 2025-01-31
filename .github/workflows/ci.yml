@@ -34,6 +34,9 @@ jobs:
         - build: win-msvc
           os: windows-latest
           rust: stable
+        - build: linux-arm64
+          os: ubuntu-24.04-arm
+          rust: stable
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
