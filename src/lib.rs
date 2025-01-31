@@ -10,5 +10,6 @@ mod utils;
 
 pub use archive::*;
 pub use crc::crc32;
+pub use errors::Error;
 pub use locator::*;
-pub use reader_at::ReaderAt;
+pub use reader_at::{FileReader, ReaderAt};

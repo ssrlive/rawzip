@@ -956,6 +956,14 @@ impl<'a> ZipFileHeaderRecord<'a> {
     pub fn file_safe_path(&self) -> Result<Cow<str>, Error> {
         self.file_name.normalize()
     }
+
+    /// Return the raw bytes of the file path
+    ///
+    /// **WARNING**: this may contain be an absolute path or contain a file path
+    /// capable of zip slips. Prefer [`Self::file_safe_path`].
+    pub fn file_raw_path(&self) -> &[u8] {
+        self.file_name.as_bytes()
+    }
 }
 
 /// Contains directions to where the Zip entry's data is located within the Zip archive.
