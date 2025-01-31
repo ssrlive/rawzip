@@ -744,6 +744,11 @@ impl<'a> ZipFilePath<'a> {
     fn normalize_alloc(s: &str) -> String {
         // 4.4.17.1 All slashes MUST be forward slashes '/'
         let s = s.replace("\\", "/");
+
+        // 4.4.17.1 MUST NOT contain a drive or device letter
+        let s = s.split(':').last().unwrap_or_default();
+
+        // resolve path components
         let splits = s.split('/');
         let mut result = String::new();
         for split in splits {
@@ -828,7 +833,7 @@ impl<'a> ZipFilePath<'a> {
         for &c in name.as_bytes() {
             if matches!(
                 (c, last),
-                (b'\\', _) | (b'/', b'/') | (b'.', b'.') | (b'.', b'/')
+                (b'\\', _) | (b'/', b'/') | (b'.', b'.') | (b'.', b'/') | (b':', _)
             ) {
                 // slow path: intrusive string manipulations required
                 return Ok(Cow::Owned(Self::normalize_alloc(name)));
@@ -1208,6 +1213,9 @@ mod tests {
     #[case(b"a/b/../../test.txt", "test.txt")]
     #[case(b"a/b/c/../../../test.txt", "test.txt")]
     #[case(b"a/b/c/d/../../test.txt", "a/b/test.txt")]
+    #[case(b"C:\\hello\\test.txt", "hello/test.txt")]
+    #[case(b"C:/hello\\test.txt", "hello/test.txt")]
+    #[case(b"C:/hello/test.txt", "hello/test.txt")]
     fn test_zip_path_normalized(#[case] input: &[u8], #[case] expected: &str) {
         assert_eq!(ZipFilePath::new(input).normalize().unwrap(), expected);
     }
