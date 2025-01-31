@@ -24,15 +24,10 @@ fuzz_target!(|data: &[u8]| {
         }
 
         let inflater = flate2::read::DeflateDecoder::new(ent.reader());
-        let mut verifier = rawzip::ZipVerifier::new(inflater);
+        let mut verifier = ent.verifier(inflater);
         let mut sink = std::io::sink();
         let Ok(_) = std::io::copy(&mut verifier, &mut sink) else {
             continue;
         };
-    
-        let claim = verifier.verification_claim();
-        let reader = verifier.into_inner().into_inner();
-    
-        let _ = reader.verify_claim(claim);
     }
 });

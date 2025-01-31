@@ -31,12 +31,9 @@ fn zip_integration_tests() {
         match entry.compression_method() {
             rawzip::CompressionMethod::Deflate => {
                 let inflater = flate2::read::DeflateDecoder::new(ent.reader());
-                let mut verifier = rawzip::ZipVerifier::new(inflater);
+                let mut verifier = ent.verifier(inflater);
                 let mut data = Vec::new();
                 std::io::copy(&mut verifier, &mut Cursor::new(&mut data)).unwrap();
-                let claim = verifier.verification_claim();
-                let reader = verifier.into_inner().into_inner();
-                reader.verify_claim(claim).unwrap();
                 actual.push(TestZip {
                     file_name: file_name.into_owned(),
                     data: Compression::Deflated(data),
@@ -74,11 +71,9 @@ fn zip_integration_tests_slice() {
         match entry.compression_method() {
             rawzip::CompressionMethod::Deflate => {
                 let inflater = flate2::read::DeflateDecoder::new(ent.data());
-                let mut verifier = rawzip::ZipVerifier::new(inflater);
+                let mut verifier = ent.verifier(inflater);
                 let mut data = Vec::new();
                 std::io::copy(&mut verifier, &mut Cursor::new(&mut data)).unwrap();
-                let claim = verifier.verification_claim();
-                ent.verify_claim(claim).unwrap();
                 actual.push(TestZip {
                     file_name: file_name.into_owned(),
                     data: Compression::Deflated(data),

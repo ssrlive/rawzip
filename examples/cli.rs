@@ -47,17 +47,11 @@ fn main() {
             std::process::exit(1);
         }
 
-        let inflater = flate2::read::DeflateDecoder::new(ent.reader());
-        let mut verifier = rawzip::ZipVerifier::new(inflater);
+        let reader = ent.reader();
+        let inflater = flate2::read::DeflateDecoder::new(reader);
+        let mut verifier = ent.verifier(inflater);
         if let Err(e) = std::io::copy(&mut verifier, &mut out) {
             eprintln!("Failed to copy entry to data: {}", e);
-            std::process::exit(1);
-        }
-
-        let claim = verifier.verification_claim();
-        let reader = verifier.into_inner().into_inner();
-        if let Err(e) = reader.verify_claim(claim) {
-            eprintln!("Verification failed: {}", e);
             std::process::exit(1);
         }
     }

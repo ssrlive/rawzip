@@ -83,22 +83,60 @@ impl<'a> ZipSliceEntry<'a> {
         self.data
     }
 
-    pub fn verify_claim(&self, claim: ZipVerification) -> Result<(), Error> {
-        if claim.size() != self.expected_size {
-            return Err(Error::from(ErrorKind::InvalidSize {
-                expected: self.expected_size,
-                actual: claim.size(),
-            }));
+    pub fn verifier<D>(&self, reader: D) -> ZipSliceVerifier<D>
+    where
+        D: std::io::Read,
+    {
+        ZipSliceVerifier {
+            reader,
+            expected_crc: self.expected_crc,
+            expected_size: self.expected_size,
+            crc: 0,
+            size: 0,
+        }
+    }
+}
+
+pub struct ZipSliceVerifier<D> {
+    reader: D,
+    crc: u32,
+    size: u64,
+    expected_crc: u32,
+    expected_size: u64,
+}
+
+impl<D> ZipSliceVerifier<D> {
+    pub fn into_inner(self) -> D {
+        self.reader
+    }
+}
+
+impl<D> std::io::Read for ZipSliceVerifier<D>
+where
+    D: std::io::Read,
+{
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.reader.read(buf)?;
+        self.crc = crc32_chunk(&buf[..read], self.crc);
+        self.size += read as u64;
+
+        if read == 0 {
+            if self.size != self.expected_size {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "invalid uncompressed size",
+                ));
+            }
+
+            if self.expected_crc != 0 && self.expected_crc != self.crc {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "invalid crc checksum",
+                ));
+            }
         }
 
-        if self.expected_crc != 0 && self.expected_crc != claim.crc() {
-            return Err(Error::from(ErrorKind::InvalidChecksum {
-                expected: self.expected_crc,
-                actual: claim.crc(),
-            }));
-        }
-
-        Ok(())
+        Ok(read)
     }
 }
 
@@ -217,12 +255,26 @@ impl<'archive, R> ZipEntry<'archive, R>
 where
     R: ReaderAt,
 {
-    pub fn reader(self) -> ZipReader<'archive, R> {
+    pub fn reader(&self) -> ZipReader<'archive, R> {
         ZipReader {
             archive: self.archive,
             entry: self.entry,
             offset: self.body_offset,
             end_offset: self.body_end_offset,
+        }
+    }
+
+    pub fn verifier<D>(&self, reader: D) -> ZipVerifier<'archive, D, R>
+    where
+        D: std::io::Read,
+    {
+        ZipVerifier {
+            reader,
+            crc: 0,
+            size: 0,
+            archive: self.archive,
+            end_offset: self.body_end_offset,
+            wayfinder: self.entry,
         }
     }
 }
@@ -243,42 +295,65 @@ impl ZipVerification {
 }
 
 /// Verifies the checksum of the decompressed data matches the checksum listed in the zip
-#[derive(Debug)]
-pub struct ZipVerifier<R> {
-    reader: R,
+pub struct ZipVerifier<'archive, Decompressor, ReaderAt> {
+    reader: Decompressor,
     crc: u32,
     size: u64,
+    archive: &'archive ZipArchive<ReaderAt>,
+    end_offset: u64,
+    wayfinder: ZipArchiveEntryWayfinder,
 }
 
-impl<R> ZipVerifier<R> {
-    pub fn new(reader: R) -> Self {
-        Self {
-            reader,
-            crc: 0,
-            size: 0,
-        }
-    }
-
-    pub fn verification_claim(&self) -> ZipVerification {
-        ZipVerification {
-            crc: self.crc,
-            uncompressed_size: self.size,
-        }
-    }
-
-    pub fn into_inner(self) -> R {
+impl<Decompressor, ReaderAt> ZipVerifier<'_, Decompressor, ReaderAt> {
+    pub fn into_inner(self) -> Decompressor {
         self.reader
     }
 }
 
-impl<R> std::io::Read for ZipVerifier<R>
+impl<Decompressor, Reader> std::io::Read for ZipVerifier<'_, Decompressor, Reader>
 where
-    R: std::io::Read,
+    Decompressor: std::io::Read,
+    Reader: ReaderAt,
 {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let read = self.reader.read(buf)?;
         self.crc = crc32_chunk(&buf[..read], self.crc);
         self.size += read as u64;
+
+        if read == 0 || self.size >= self.wayfinder.uncompressed_size_hint() {
+            if self.size != self.wayfinder.uncompressed_size_hint() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "invalid uncompressed size",
+                ));
+            }
+
+            if self.wayfinder.has_data_descriptor {
+                let mut buffer = [0u8; DataDescriptor::SIZE];
+                self.archive
+                    .reader
+                    .read_exact_at(&mut buffer, self.end_offset)?;
+
+                let descriptor = DataDescriptor::parse(&buffer).map_err(|_| {
+                    std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid data descriptor")
+                })?;
+
+                if descriptor.crc != self.crc {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "invalid crc checksum",
+                    ));
+                }
+            }
+
+            if self.wayfinder.crc != 0 && self.wayfinder.crc != self.crc {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "invalid crc checksum",
+                ));
+            }
+        }
+
         Ok(read)
     }
 }
