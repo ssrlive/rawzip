@@ -24,7 +24,7 @@ fuzz_target!(|data: &[u8]| {
         }
 
         let inflater = flate2::read::DeflateDecoder::new(ent.reader());
-        let mut verifier = ent.verifier(inflater);
+        let mut verifier = ent.verifying_reader(inflater);
         let mut sink = std::io::sink();
         let Ok(_) = std::io::copy(&mut verifier, &mut sink) else {
             continue;

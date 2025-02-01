@@ -31,7 +31,7 @@ fn zip_integration_tests() {
         match entry.compression_method() {
             rawzip::CompressionMethod::Deflate => {
                 let inflater = flate2::read::DeflateDecoder::new(ent.reader());
-                let mut verifier = ent.verifier(inflater);
+                let mut verifier = ent.verifying_reader(inflater);
                 let mut data = Vec::new();
                 std::io::copy(&mut verifier, &mut Cursor::new(&mut data)).unwrap();
                 actual.push(TestZip {
