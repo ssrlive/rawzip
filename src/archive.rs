@@ -66,16 +66,17 @@ impl<'a> ZipSliceArchive<'a> {
 
         Ok(ZipSliceEntry {
             data,
-            expected_crc,
-            expected_size: entry.uncompressed_size,
+            verifier: ZipVerification {
+                crc: expected_crc,
+                uncompressed_size: entry.uncompressed_size_hint(),
+            },
         })
     }
 }
 
 pub struct ZipSliceEntry<'a> {
     data: &'a [u8],
-    expected_crc: u32,
-    expected_size: u64,
+    verifier: ZipVerification,
 }
 
 impl<'a> ZipSliceEntry<'a> {
@@ -89,8 +90,7 @@ impl<'a> ZipSliceEntry<'a> {
     {
         ZipSliceVerifier {
             reader,
-            expected_crc: self.expected_crc,
-            expected_size: self.expected_size,
+            verifier: self.verifier,
             crc: 0,
             size: 0,
         }
@@ -101,8 +101,7 @@ pub struct ZipSliceVerifier<D> {
     reader: D,
     crc: u32,
     size: u64,
-    expected_crc: u32,
-    expected_size: u64,
+    verifier: ZipVerification,
 }
 
 impl<D> ZipSliceVerifier<D> {
@@ -120,20 +119,13 @@ where
         self.crc = crc32_chunk(&buf[..read], self.crc);
         self.size += read as u64;
 
-        if read == 0 {
-            if self.size != self.expected_size {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "invalid uncompressed size",
-                ));
-            }
-
-            if self.expected_crc != 0 && self.expected_crc != self.crc {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "invalid crc checksum",
-                ));
-            }
+        if read == 0 || self.size >= self.verifier.size() {
+            self.verifier
+                .valid(ZipVerification {
+                    crc: self.crc,
+                    uncompressed_size: self.size,
+                })
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         }
 
         Ok(read)
@@ -264,7 +256,7 @@ where
         }
     }
 
-    pub fn verifier<D>(&self, reader: D) -> ZipVerifier<'archive, D, R>
+    pub fn verifying_reader<D>(&self, reader: D) -> ZipVerifier<'archive, D, R>
     where
         D: std::io::Read,
     {
@@ -279,6 +271,7 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ZipVerification {
     pub crc: u32,
     pub uncompressed_size: u64,
@@ -291,6 +284,24 @@ impl ZipVerification {
 
     pub fn size(&self) -> u64 {
         self.uncompressed_size
+    }
+
+    pub fn valid(&self, rhs: ZipVerification) -> Result<(), Error> {
+        if self.size() != rhs.size() {
+            return Err(Error::from(ErrorKind::InvalidSize {
+                expected: self.size(),
+                actual: rhs.size(),
+            }));
+        }
+
+        if self.crc() != 0 && self.crc() != rhs.crc() {
+            return Err(Error::from(ErrorKind::InvalidChecksum {
+                expected: self.crc(),
+                actual: rhs.crc(),
+            }));
+        }
+
+        Ok(())
     }
 }
 
@@ -321,37 +332,24 @@ where
         self.size += read as u64;
 
         if read == 0 || self.size >= self.wayfinder.uncompressed_size_hint() {
-            if self.size != self.wayfinder.uncompressed_size_hint() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "invalid uncompressed size",
-                ));
-            }
+            let crc = if self.wayfinder.has_data_descriptor {
+                DataDescriptor::read_at(&self.archive.reader, self.end_offset).map(|x| x.crc)
+            } else {
+                Ok(self.crc)
+            };
 
-            if self.wayfinder.has_data_descriptor {
-                let mut buffer = [0u8; DataDescriptor::SIZE];
-                self.archive
-                    .reader
-                    .read_exact_at(&mut buffer, self.end_offset)?;
+            crc.and_then(|crc| {
+                let expected = ZipVerification {
+                    crc: self.crc,
+                    uncompressed_size: self.wayfinder.uncompressed_size_hint(),
+                };
 
-                let descriptor = DataDescriptor::parse(&buffer).map_err(|_| {
-                    std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid data descriptor")
-                })?;
-
-                if descriptor.crc != self.crc {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "invalid crc checksum",
-                    ));
-                }
-            }
-
-            if self.wayfinder.crc != 0 && self.wayfinder.crc != self.crc {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "invalid crc checksum",
-                ));
-            }
+                expected.valid(ZipVerification {
+                    crc,
+                    uncompressed_size: self.size,
+                })
+            })
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         }
 
         Ok(read)
@@ -369,37 +367,25 @@ impl<R> ZipReader<'_, R>
 where
     R: ReaderAt,
 {
-    pub fn verify_claim(&self, claim: ZipVerification) -> Result<(), Error> {
-        if claim.size() != self.entry.uncompressed_size {
-            return Err(Error::from(ErrorKind::InvalidSize {
-                expected: self.entry.uncompressed_size,
-                actual: claim.size(),
-            }));
-        }
+    /// Returns an object that can be used to verify the size and checksum of
+    /// inflated data
+    ///
+    /// This function consumes self to communicate that the reader should be
+    /// done reading, as the any potential data descriptor is found after the
+    /// data.
+    pub fn claim_verifier(self) -> Result<ZipVerification, Error> {
+        let expected_size = self.entry.uncompressed_size_hint();
 
-        if self.entry.has_data_descriptor {
-            let mut buffer = [0u8; DataDescriptor::SIZE];
-            self.archive
-                .reader
-                .read_exact_at(&mut buffer, self.end_offset)
-                .map_err(Error::io)?;
-            let descriptor = DataDescriptor::parse(&buffer)?;
-            if descriptor.crc != claim.crc() {
-                return Err(Error::from(ErrorKind::InvalidChecksum {
-                    expected: descriptor.crc,
-                    actual: claim.crc(),
-                }));
-            }
-        }
+        let expected_crc = if self.entry.has_data_descriptor {
+            DataDescriptor::read_at(&self.archive.reader, self.end_offset).map(|x| x.crc)?
+        } else {
+            self.entry.crc
+        };
 
-        if self.entry.crc != 0 && self.entry.crc != claim.crc() {
-            return Err(Error::from(ErrorKind::InvalidChecksum {
-                expected: self.entry.crc,
-                actual: claim.crc(),
-            }));
-        }
-
-        Ok(())
+        Ok(ZipVerification {
+            crc: expected_crc,
+            uncompressed_size: expected_size,
+        })
     }
 }
 
@@ -445,6 +431,17 @@ impl DataDescriptor {
         Ok(DataDescriptor {
             crc: le_u32(&data[pos..pos + 4]),
         })
+    }
+
+    fn read_at<R>(reader: R, offset: u64) -> Result<DataDescriptor, Error>
+    where
+        R: ReaderAt,
+    {
+        let mut buffer = [0u8; Self::SIZE];
+        reader
+            .read_exact_at(&mut buffer, offset)
+            .map_err(Error::io)?;
+        Self::parse(&buffer)
     }
 }
 

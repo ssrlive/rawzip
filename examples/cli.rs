@@ -49,7 +49,7 @@ fn main() {
 
         let reader = ent.reader();
         let inflater = flate2::read::DeflateDecoder::new(reader);
-        let mut verifier = ent.verifier(inflater);
+        let mut verifier = ent.verifying_reader(inflater);
         if let Err(e) = std::io::copy(&mut verifier, &mut out) {
             eprintln!("Failed to copy entry to data: {}", e);
             std::process::exit(1);
