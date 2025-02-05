@@ -42,6 +42,14 @@ impl<'a> ZipSliceArchive<'a> {
         self.comment
     }
 
+    pub fn into_owned(self) -> ZipArchive<&'a [u8]> {
+        ZipArchive {
+            reader: self.data,
+            comment: self.comment.into_owned(),
+            eocd: self.eocd,
+        }
+    }
+
     pub fn get_entry(&self, entry: ZipArchiveEntryWayfinder) -> Result<ZipSliceEntry, Error> {
         let header = &self.data[(entry.local_header_offset as usize).min(self.data.len())..];
         let file_header = ZipLocalFileHeaderFixed::parse(header)?;
@@ -703,6 +711,10 @@ impl<'a> ZipStr<'a> {
 
     pub fn as_bytes(&self) -> &'a [u8] {
         self.0
+    }
+
+    pub fn into_owned(&self) -> ZipString {
+        ZipString::new(self.0.to_vec())
     }
 }
 
