@@ -84,7 +84,7 @@ impl<'a> ZipSliceEntry<'a> {
         self.data
     }
 
-    pub fn verifier<D>(&self, reader: D) -> ZipSliceVerifier<D>
+    pub fn verifying_reader<D>(&self, reader: D) -> ZipSliceVerifier<D>
     where
         D: std::io::Read,
     {
