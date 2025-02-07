@@ -157,6 +157,7 @@ impl ZipSliceEntries<'_> {
     }
 }
 
+#[derive(Debug)]
 pub struct ZipArchive<R> {
     pub(crate) reader: R,
     pub(crate) comment: ZipString,
@@ -453,6 +454,7 @@ impl DataDescriptor {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct EndOfCentralDirectory {
     pub(crate) zip64: Option<Zip64EndOfCentralDirectoryRecord>,
     pub(crate) eocd: EndOfCentralDirectoryRecordFixed,

@@ -249,6 +249,7 @@ where
 }
 
 #[allow(dead_code)]
+#[derive(Debug)]
 pub(crate) struct EndOfCentralDirectoryRecordFixed {
     pub(crate) signature: u32,
     pub(crate) disk_number: u16,
