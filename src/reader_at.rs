@@ -118,6 +118,15 @@ pub struct FileReader(MutexReader<std::fs::File>);
 #[cfg(unix)]
 pub struct FileReader(std::fs::File);
 
+impl FileReader {
+    pub fn into_inner(self) -> std::fs::File {
+        #[cfg(not(unix))]
+        return self.0.into_inner();
+        #[cfg(unix)]
+        return self.0;
+    }
+}
+
 impl ReaderAt for FileReader {
     fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
         self.0.read_at(buf, offset)
@@ -147,6 +156,10 @@ pub struct MutexReader<R>(std::sync::Mutex<R>);
 impl<R> MutexReader<R> {
     pub fn new(inner: R) -> Self {
         Self(std::sync::Mutex::new(inner))
+    }
+
+    pub fn into_inner(self) -> R {
+        self.0.into_inner().unwrap()
     }
 }
 

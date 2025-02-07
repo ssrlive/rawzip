@@ -97,3 +97,32 @@ impl From<std::io::Error> for ErrorKind {
         ErrorKind::IO(err)
     }
 }
+
+/// An error that can return ownership of the reader
+#[derive(Debug)]
+pub struct ReaderError<R> {
+    reader: R,
+    error: Error,
+}
+
+impl<R> ReaderError<R> {
+    pub(crate) fn new(reader: R, error: Error) -> ReaderError<R> {
+        ReaderError { reader, error }
+    }
+
+    pub fn into_inner(self) -> R {
+        self.reader
+    }
+
+    pub fn into_parts(self) -> (R, Error) {
+        (self.reader, self.error)
+    }
+}
+
+impl<R> std::error::Error for ReaderError<R> where R: std::fmt::Debug {}
+
+impl<R> std::fmt::Display for ReaderError<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.error)
+    }
+}
