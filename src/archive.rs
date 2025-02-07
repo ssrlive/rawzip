@@ -1034,6 +1034,11 @@ impl<'a> ZipFileHeaderRecord<'a> {
         self.compressed_size
     }
 
+    /// The offset to the local file header within the Zip archive.
+    pub fn local_header_offset(&self) -> u64 {
+        self.local_header_offset
+    }
+
     /// The compression method used to compress the data
     pub fn compression_method(&self) -> CompressionMethod {
         self.compression_method.as_method()
