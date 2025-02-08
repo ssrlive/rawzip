@@ -22,6 +22,7 @@ pub(crate) const LOCAL_FILE_HEADER_SIGNATURE: u32 = 0x04034b50;
 /// > generally exceed 65,535 bytes.
 pub const RECOMMENDED_BUFFER_SIZE: usize = 1 << 16;
 
+#[derive(Debug, Clone)]
 pub struct ZipSliceArchive<'a> {
     pub(crate) data: &'a [u8],
     pub(crate) comment: ZipStr<'a>,
@@ -82,6 +83,7 @@ impl<'a> ZipSliceArchive<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ZipSliceEntry<'a> {
     data: &'a [u8],
     verifier: ZipVerification,
@@ -105,6 +107,7 @@ impl<'a> ZipSliceEntry<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ZipSliceVerifier<D> {
     reader: D,
     crc: u32,
@@ -140,6 +143,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ZipSliceEntries<'data> {
     entry_data: &'data [u8],
 }
@@ -157,7 +161,7 @@ impl ZipSliceEntries<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ZipArchive<R> {
     pub(crate) reader: R,
     pub(crate) comment: ZipString,
@@ -245,6 +249,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ZipEntry<'archive, R> {
     archive: &'archive ZipArchive<R>,
     body_offset: u64,
@@ -315,6 +320,7 @@ impl ZipVerification {
 }
 
 /// Verifies the checksum of the decompressed data matches the checksum listed in the zip
+#[derive(Debug, Clone)]
 pub struct ZipVerifier<'archive, Decompressor, ReaderAt> {
     reader: Decompressor,
     crc: u32,
@@ -365,6 +371,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ZipReader<'archive, R> {
     archive: &'archive ZipArchive<R>,
     entry: ZipArchiveEntryWayfinder,
@@ -413,6 +420,7 @@ where
     }
 }
 
+#[derive(Debug, Clone)]
 struct DataDescriptor {
     crc: u32,
 }
@@ -454,7 +462,7 @@ impl DataDescriptor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct EndOfCentralDirectory {
     pub(crate) zip64: Option<Zip64EndOfCentralDirectoryRecord>,
     pub(crate) eocd: EndOfCentralDirectoryRecordFixed,
@@ -476,6 +484,7 @@ impl EndOfCentralDirectory {
     }
 }
 
+#[derive(Debug)]
 pub struct ZipEntries<'archive, 'buf, R> {
     buffer: &'buf mut [u8],
     archive: &'archive ZipArchive<R>,
@@ -565,7 +574,7 @@ impl VersionMadeBy {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub(crate) struct Zip64EndOfCentralDirectoryRecord {
     /// zip64 end of central dir signature
@@ -867,7 +876,7 @@ impl<'a> ZipFilePath<'a> {
 ///
 ///
 /// 4.3.12
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct ZipFileHeaderRecord<'a> {
     signature: u32,
@@ -1090,6 +1099,7 @@ impl ZipArchiveEntryWayfinder {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ZipLocalFileHeaderFixed {
     pub signature: u32,
     pub version_needed: u16,
@@ -1141,7 +1151,7 @@ impl ZipLocalFileHeaderFixed {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ZipFileHeaderFixed {
     pub signature: u32,
     pub version_made_by: u16,
