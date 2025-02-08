@@ -181,7 +181,9 @@ impl ZipArchive<()> {
         file: std::fs::File,
         buffer: &mut [u8],
     ) -> Result<ZipArchive<FileReader>, Error> {
-        ZipLocator::new().locate_in_file(file, buffer)
+        ZipLocator::new()
+            .locate_in_file(file, buffer)
+            .map_err(|e| e.into_parts().1)
     }
 
     pub fn from_seekable<R>(
@@ -192,7 +194,9 @@ impl ZipArchive<()> {
         R: Read + Seek,
     {
         let reader = MutexReader::new(reader);
-        ZipLocator::new().locate_in_reader(reader, buffer)
+        ZipLocator::new()
+            .locate_in_reader(reader, buffer)
+            .map_err(|e| e.into_parts().1)
     }
 }
 
