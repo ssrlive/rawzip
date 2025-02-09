@@ -1,3 +1,9 @@
+## v0.0.4 - February 8th, 2025
+
+- Add exposure of file local header offset
+- Add `Debug` and `Clone` implementations to most structs
+- Add `ReaderError` to `ZipLocator` to return file ownership back to caller on failure
+
 ## v0.0.3 - February 6th, 2025
 
 - Add an `into_owned` to transform a `ZipSliceArchive` into a `ZipArchive`
