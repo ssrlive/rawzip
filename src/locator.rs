@@ -51,7 +51,11 @@ impl ZipLocator {
             return Ok(ZipSliceArchive {
                 data,
                 comment,
-                eocd: EndOfCentralDirectory { zip64: None, eocd },
+                eocd: EndOfCentralDirectory {
+                    zip64: None,
+                    eocd,
+                    stream_pos: location as u64,
+                },
             });
         }
 
@@ -67,6 +71,7 @@ impl ZipLocator {
             eocd: EndOfCentralDirectory {
                 zip64: Some(zip64_record),
                 eocd,
+                stream_pos: zip64_locator.directory_offset,
             },
         })
     }
@@ -122,7 +127,7 @@ impl ZipLocator {
                     let read = reader.read_at_least_at(
                         buffer,
                         EndOfCentralDirectoryRecordFixed::SIZE,
-                        stream_pos as u64,
+                        stream_pos,
                     );
 
                     let read = match read {
@@ -150,7 +155,7 @@ impl ZipLocator {
             let read = reader.read_at_most_at(
                 &mut comment[pos..],
                 comment_len - pos,
-                stream_pos as u64 + EndOfCentralDirectoryRecordFixed::SIZE as u64 + pos as u64,
+                stream_pos + EndOfCentralDirectoryRecordFixed::SIZE as u64 + pos as u64,
             );
 
             if let Err(e) = read {
@@ -165,7 +170,11 @@ impl ZipLocator {
             return Ok(ZipArchive {
                 reader: reader.inner,
                 comment,
-                eocd: EndOfCentralDirectory { zip64: None, eocd },
+                eocd: EndOfCentralDirectory {
+                    zip64: None,
+                    eocd,
+                    stream_pos,
+                },
             });
         }
 
@@ -174,7 +183,7 @@ impl ZipLocator {
         // Unhappy path: if we needed to issue any reads since the original
         // eocd or don't have enough data in the buffer
         let eocd64l_pos = if reader.is_marked() || eocd64l_size > buffer_pos {
-            if eocd64l_size > stream_pos {
+            if (eocd64l_size as u64) > stream_pos {
                 return Err(ReaderError::new(
                     reader.inner,
                     Error::from(ErrorKind::MissingZip64EndOfCentralDirectory),
@@ -183,7 +192,7 @@ impl ZipLocator {
 
             let read = reader.read_exact_at(
                 &mut buffer[..eocd64l_size],
-                (stream_pos - eocd64l_size) as u64,
+                stream_pos - eocd64l_size as u64,
             );
 
             match read {
@@ -204,8 +213,8 @@ impl ZipLocator {
 
         // Unhappy path: zip64 eocd is not in the original buffer
         let eocd64_pos = if reader.is_marked()
-            || (zip64_locator.directory_offset as usize) > stream_pos
-            || stream_pos - (zip64_locator.directory_offset as usize) > buffer_pos
+            || zip64_locator.directory_offset > stream_pos
+            || stream_pos - zip64_locator.directory_offset > buffer_pos as u64
         {
             let read = reader.try_read_at_least_at(
                 buffer,
@@ -219,7 +228,7 @@ impl ZipLocator {
 
             0
         } else {
-            buffer_pos - (stream_pos - (zip64_locator.directory_offset as usize))
+            buffer_pos - (stream_pos - zip64_locator.directory_offset) as usize
         };
 
         let zip64_eocd = &buffer[eocd64_pos..];
@@ -236,6 +245,7 @@ impl ZipLocator {
             eocd: EndOfCentralDirectory {
                 zip64: Some(zip64_record),
                 eocd,
+                stream_pos: zip64_locator.directory_offset,
             },
         })
     }
@@ -392,7 +402,7 @@ pub(crate) fn find_end_of_central_dir_with_seek<T>(
     mut reader: T,
     buffer: &mut [u8],
     max_search_space: u64,
-) -> std::io::Result<Option<(usize, usize)>>
+) -> std::io::Result<Option<(u64, usize)>>
 where
     T: ReaderAt + Seek,
 {
@@ -425,7 +435,7 @@ where
 
         let haystack = &buffer[..read_size + carry_over];
         if let Some(i) = backwards_find(haystack, &END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES) {
-            let stream_pos = (max_back + remaining) as usize + i;
+            let stream_pos = (max_back + remaining) + (i as u64);
             return Ok(Some((stream_pos, i)));
         }
 
@@ -482,7 +492,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
 
-        assert_eq!(index, result);
+        assert_eq!(index, result as u64);
         assert_eq!(
             buffer[buffer_index..buffer_index + 4],
             END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES
@@ -502,7 +512,7 @@ mod tests {
         let curse =
             find_end_of_central_dir_with_seek(reader, &mut buffer, max_search_space).unwrap();
 
-        assert_eq!(mem, curse.map(|(a, _)| a));
+        assert_eq!(mem.map(|x| x as u64), curse.map(|(a, _)| a));
     }
 
     #[rstest]
@@ -540,10 +550,10 @@ mod tests {
         #[case] input: &[u8],
         #[case] buffer_size: usize,
         #[case] max_search_space: u64,
-        #[case] expected: Option<usize>,
+        #[case] expected: Option<u64>,
     ) {
         let result = find_end_of_central_dir_signature(input, max_search_space as usize);
-        assert_eq!(result, expected);
+        assert_eq!(result.map(|x| x as u64), expected);
 
         let cursor = Cursor::new(input);
         let mut buffer = vec![0u8; buffer_size];
