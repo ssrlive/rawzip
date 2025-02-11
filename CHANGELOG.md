@@ -1,3 +1,9 @@
+## v0.0.5 - February 11th, 2025
+
+- Improved support for zips with arbitrary leading data
+- Expose base offset of where the zip file begins proper
+- Expose inner ReaderAt with `get_ref`
+
 ## v0.0.4 - February 8th, 2025
 
 - Add exposure of file local header offset
