@@ -200,10 +200,11 @@ impl ZipArchive<()> {
     }
 }
 
-impl<R> ZipArchive<R>
-where
-    R: ReaderAt,
-{
+impl<R> ZipArchive<R> {
+    pub fn get_ref(&self) -> &R {
+        &self.reader
+    }
+
     /// Function will seek to and read the central directory, the function
     /// accepts a buffer will be read into and will return borrowed data as long
     /// as the next entry can be read
@@ -228,7 +229,12 @@ where
     pub fn comment(&self) -> ZipStr {
         self.comment.as_str()
     }
+}
 
+impl<R> ZipArchive<R>
+where
+    R: ReaderAt,
+{
     pub fn get_entry(&self, entry: ZipArchiveEntryWayfinder) -> Result<ZipEntry<'_, R>, Error> {
         let mut buffer = [0u8; ZipLocalFileHeaderFixed::SIZE];
         self.reader
