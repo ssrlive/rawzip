@@ -28,31 +28,43 @@ fn main() {
     let mut out = out.lock();
 
     let mut entries = archive.entries(&mut buf);
-    while let Ok(Some(entry)) = entries.next_entry() {
-        if entry.is_dir() {
-            continue;
-        }
+    loop {
+        match entries.next_entry() {
+            Ok(Some(entry)) => {
+                if entry.is_dir() {
+                    continue;
+                }
 
-        let wayfinder = entry.wayfinder();
-        let Ok(ent) = archive.get_entry(wayfinder) else {
-            eprintln!("Failed to get entry");
-            std::process::exit(1);
-        };
+                let wayfinder = entry.wayfinder();
+                let ent = match archive.get_entry(wayfinder) {
+                    Ok(ent) => ent,
+                    Err(e) => {
+                        eprintln!("Failed to get entry: {}", e);
+                        std::process::exit(1);
+                    }
+                };
 
-        if entry.compression_method() != rawzip::CompressionMethod::Deflate {
-            eprintln!(
-                "Unsupported compression method: {:?}",
-                entry.compression_method()
-            );
-            std::process::exit(1);
-        }
+                if entry.compression_method() != rawzip::CompressionMethod::Deflate {
+                    eprintln!(
+                        "Unsupported compression method: {:?}",
+                        entry.compression_method()
+                    );
+                    std::process::exit(1);
+                }
 
-        let reader = ent.reader();
-        let inflater = flate2::read::DeflateDecoder::new(reader);
-        let mut verifier = ent.verifying_reader(inflater);
-        if let Err(e) = std::io::copy(&mut verifier, &mut out) {
-            eprintln!("Failed to copy entry to data: {}", e);
-            std::process::exit(1);
+                let reader = ent.reader();
+                let inflater = flate2::read::DeflateDecoder::new(reader);
+                let mut verifier = ent.verifying_reader(inflater);
+                if let Err(e) = std::io::copy(&mut verifier, &mut out) {
+                    eprintln!("Failed to copy entry to data: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            Ok(None) => break,
+            Err(e) => {
+                eprintln!("Failed to get next entry: {}", e);
+                std::process::exit(1);
+            }
         }
     }
 }
