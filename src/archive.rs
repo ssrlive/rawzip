@@ -32,7 +32,10 @@ pub struct ZipSliceArchive<'a> {
 impl<'a> ZipSliceArchive<'a> {
     pub fn entries(&self) -> ZipSliceEntries<'a> {
         let entry_data = &self.data[(self.eocd.offset() as usize).min(self.data.len())..];
-        ZipSliceEntries { entry_data }
+        ZipSliceEntries {
+            entry_data,
+            base_offset: self.eocd.base_offset(),
+        }
     }
 
     pub fn entries_hint(&self) -> u64 {
@@ -146,6 +149,7 @@ where
 #[derive(Debug, Clone)]
 pub struct ZipSliceEntries<'data> {
     entry_data: &'data [u8],
+    base_offset: u64,
 }
 
 impl ZipSliceEntries<'_> {
@@ -155,7 +159,8 @@ impl ZipSliceEntries<'_> {
         };
         self.entry_data = &self.entry_data[ZipFileHeaderFixed::SIZE..];
         let variable_length = file_header.variable_length();
-        let entry = ZipFileHeaderRecord::from_parts(file_header, self.entry_data);
+        let mut entry = ZipFileHeaderRecord::from_parts(file_header, self.entry_data);
+        entry.local_header_offset += self.base_offset;
         self.entry_data = &self.entry_data[variable_length..];
         Ok(Some(entry))
     }
@@ -219,6 +224,7 @@ impl<R> ZipArchive<R> {
             pos: 0,
             end: 0,
             offset: self.eocd.offset(),
+            base_offset: self.eocd.base_offset(),
         }
     }
 
@@ -476,14 +482,28 @@ impl DataDescriptor {
 pub(crate) struct EndOfCentralDirectory {
     pub(crate) zip64: Option<Zip64EndOfCentralDirectoryRecord>,
     pub(crate) eocd: EndOfCentralDirectoryRecordFixed,
+    pub(crate) stream_pos: u64,
 }
 
 impl EndOfCentralDirectory {
+    /// the start of the zip file proper.
+    fn base_offset(&self) -> u64 {
+        match &self.zip64 {
+            Some(_) => 0,
+            None => {
+                let size = u64::from(self.eocd.central_dir_size);
+                let offset = u64::from(self.eocd.central_dir_offset);
+                self.stream_pos.saturating_sub(size).saturating_sub(offset)
+            }
+        }
+    }
+
+    /// offset of the start of the central directory
     fn offset(&self) -> u64 {
         self.zip64
             .as_ref()
-            .map(|z| z.central_dir_offset)
-            .unwrap_or(u64::from(self.eocd.central_dir_offset))
+            .map(|x| x.central_dir_offset)
+            .unwrap_or_else(|| self.base_offset() + u64::from(self.eocd.central_dir_offset))
     }
 
     fn entries(&self) -> u64 {
@@ -502,6 +522,7 @@ pub struct ZipEntries<'archive, 'buf, R> {
     pos: usize,
     end: usize,
     offset: u64,
+    base_offset: u64,
 }
 
 impl<R> ZipEntries<'_, '_, R>
@@ -556,7 +577,9 @@ where
             self.end = remaining + read;
         }
 
-        let file_header = ZipFileHeaderRecord::from_parts(file_header, &self.buffer[self.pos..]);
+        let mut file_header =
+            ZipFileHeaderRecord::from_parts(file_header, &self.buffer[self.pos..]);
+        file_header.local_header_offset += self.base_offset;
         self.pos += variable_length;
         self.entries_yielded += 1;
         Ok(Some(file_header))
