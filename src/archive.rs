@@ -46,6 +46,11 @@ impl<'a> ZipSliceArchive<'a> {
         self.comment
     }
 
+    /// the start of the zip file proper.
+    pub fn base_offset(&self) -> u64 {
+        self.eocd.base_offset()
+    }
+
     pub fn into_owned(self) -> ZipArchive<&'a [u8]> {
         ZipArchive {
             reader: self.data,
@@ -234,6 +239,11 @@ impl<R> ZipArchive<R> {
 
     pub fn comment(&self) -> ZipStr {
         self.comment.as_str()
+    }
+
+    /// the start of the zip file proper.
+    pub fn base_offset(&self) -> u64 {
+        self.eocd.base_offset()
     }
 }
 
