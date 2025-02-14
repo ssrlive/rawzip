@@ -1,3 +1,7 @@
+## v0.0.6 - February 14th, 2025
+
+- Add the ability to create Zip files
+
 ## v0.0.5 - February 11th, 2025
 
 - Improved support for zips with arbitrary leading data
