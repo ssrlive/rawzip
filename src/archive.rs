@@ -5,13 +5,12 @@ use crate::utils::{le_u16, le_u32, le_u64};
 use crate::{EndOfCentralDirectoryRecordFixed, ReaderAt, ZipLocator};
 use std::{
     borrow::Cow,
-    io::{Read, Seek},
+    io::{Read, Seek, Write},
 };
 
 pub(crate) const END_OF_CENTRAL_DIR_SIGNATURE64: u32 = 0x06064b50;
 pub(crate) const END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE: u32 = 0x07064b50;
 pub(crate) const CENTRAL_HEADER_SIGNATURE: u32 = 0x02014b50;
-pub(crate) const LOCAL_FILE_HEADER_SIGNATURE: u32 = 0x04034b50;
 
 /// The recommended buffer size to use when reading from a zip file.
 ///
@@ -447,23 +446,23 @@ where
 }
 
 #[derive(Debug, Clone)]
-struct DataDescriptor {
+pub(crate) struct DataDescriptor {
     crc: u32,
 }
 
 impl DataDescriptor {
     const SIZE: usize = 8;
+    pub const SIGNATURE: u32 = 0x08074b50;
 
     fn parse(data: &[u8]) -> Result<DataDescriptor, Error> {
         if data.len() < Self::SIZE {
             return Err(Error::from(ErrorKind::Eof));
         }
 
-        const DATA_DESCRIPTOR_SIGNATURE: u32 = 0x08074b50;
         let mut pos = 0;
 
         let potential_signature = le_u32(&data[0..4]);
-        if potential_signature == DATA_DESCRIPTOR_SIGNATURE {
+        if potential_signature == Self::SIGNATURE {
             pos += 4;
         }
 
@@ -686,9 +685,13 @@ impl Zip64EndOfCentralDirectoryRecord {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct CompressionMethodId(u16);
+pub struct CompressionMethodId(u16);
 
 impl CompressionMethodId {
+    pub fn as_u16(&self) -> u16 {
+        self.0
+    }
+
     pub fn as_method(&self) -> CompressionMethod {
         match self.0 {
             0 => CompressionMethod::Store,
@@ -722,30 +725,62 @@ impl CompressionMethodId {
 ///
 /// Documented in the spec under: 4.4.5
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
 pub enum CompressionMethod {
-    Store,
-    Shrunk,
-    Reduce1,
-    Reduce2,
-    Reduce3,
-    Reduce4,
-    Imploded,
-    Tokenizing,
-    Deflate,
-    Deflate64,
-    Terse,
-    Bzip2,
-    Lzma,
-    Lz77,
-    ZstdDeprecated,
-    Zstd,
-    Mp3,
-    Xz,
-    Jpeg,
-    WavPack,
-    Ppmd,
-    Aes,
+    Store = 0,
+    Shrunk = 1,
+    Reduce1 = 2,
+    Reduce2 = 3,
+    Reduce3 = 4,
+    Reduce4 = 5,
+    Imploded = 6,
+    Tokenizing = 7,
+    Deflate = 8,
+    Deflate64 = 9,
+    Terse = 10,
+    Bzip2 = 12,
+    Lzma = 14,
+    Lz77 = 18,
+    ZstdDeprecated = 20,
+    Zstd = 93,
+    Mp3 = 94,
+    Xz = 95,
+    Jpeg = 96,
+    WavPack = 97,
+    Ppmd = 98,
+    Aes = 99,
     Unknown(u16),
+}
+
+impl CompressionMethod {
+    pub fn as_id(&self) -> CompressionMethodId {
+        let value = match self {
+            CompressionMethod::Store => 0,
+            CompressionMethod::Shrunk => 1,
+            CompressionMethod::Reduce1 => 2,
+            CompressionMethod::Reduce2 => 3,
+            CompressionMethod::Reduce3 => 4,
+            CompressionMethod::Reduce4 => 5,
+            CompressionMethod::Imploded => 6,
+            CompressionMethod::Tokenizing => 7,
+            CompressionMethod::Deflate => 8,
+            CompressionMethod::Deflate64 => 9,
+            CompressionMethod::Terse => 10,
+            CompressionMethod::Bzip2 => 12,
+            CompressionMethod::Lzma => 14,
+            CompressionMethod::Lz77 => 18,
+            CompressionMethod::ZstdDeprecated => 20,
+            CompressionMethod::Zstd => 93,
+            CompressionMethod::Mp3 => 94,
+            CompressionMethod::Xz => 95,
+            CompressionMethod::Jpeg => 96,
+            CompressionMethod::WavPack => 97,
+            CompressionMethod::Ppmd => 98,
+            CompressionMethod::Aes => 99,
+            CompressionMethod::Unknown(id) => *id,
+        };
+        CompressionMethodId(value)
+    }
 }
 
 impl From<u16> for CompressionMethod {
@@ -835,6 +870,25 @@ impl<'a> ZipFilePath<'a> {
         result
     }
 
+    /// Returns true if the file path is a directory.
+    ///
+    /// This is determined by the file path ending in a slash,
+    /// but it's a common convention as otherwise it would be an invalid file.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use rawzip::ZipFilePath;
+    /// let path = ZipFilePath::new(b"dir/");
+    /// assert!(path.is_dir());
+    ///
+    /// let path = ZipFilePath::new(b"dir/file.txt");
+    /// assert!(!path.is_dir());
+    /// ```
+    pub fn is_dir(&self) -> bool {
+        self.0.as_bytes().last() == Some(&b'/')
+    }
+
     /// Represents a path within a Zip archive.
     ///
     /// The path normalization follows these rules:
@@ -878,6 +932,9 @@ impl<'a> ZipFilePath<'a> {
     ///
     /// let path = ZipFilePath::new(b"a/b/c/d/../../test.txt");
     /// assert_eq!(path.normalize().unwrap(), "a/b/test.txt");
+    ///
+    /// let path = ZipFilePath::new(b"dir/");
+    /// assert_eq!(path.normalize().unwrap(), "dir/");
     /// ```
     ///
     /// Invalid paths:
@@ -1046,9 +1103,7 @@ impl<'a> ZipFileHeaderRecord<'a> {
     }
 
     pub fn is_dir(&self) -> bool {
-        // Nowhere in the spec does it explicitly say that a directory is identifiable by ending in a slash,
-        // but it's a common convention as otherwise it would be an invalid file.
-        self.file_name.as_bytes().last() == Some(&b'/')
+        self.file_name.is_dir()
     }
 
     /// Describes if the file has a data descriptor that follows the compressed
@@ -1144,21 +1199,22 @@ impl ZipArchiveEntryWayfinder {
 
 #[derive(Debug, Clone)]
 pub struct ZipLocalFileHeaderFixed {
-    pub signature: u32,
-    pub version_needed: u16,
-    pub flags: u16,
-    pub compression_method: u16,
-    pub last_mod_time: u16,
-    pub last_mod_date: u16,
-    pub crc32: u32,
-    pub compressed_size: u32,
-    pub uncompressed_size: u32,
-    pub file_name_len: u16,
-    pub extra_field_len: u16,
+    pub(crate) signature: u32,
+    pub(crate) version_needed: u16,
+    pub(crate) flags: u16,
+    pub(crate) compression_method: CompressionMethodId,
+    pub(crate) last_mod_time: u16,
+    pub(crate) last_mod_date: u16,
+    pub(crate) crc32: u32,
+    pub(crate) compressed_size: u32,
+    pub(crate) uncompressed_size: u32,
+    pub(crate) file_name_len: u16,
+    pub(crate) extra_field_len: u16,
 }
 
 impl ZipLocalFileHeaderFixed {
     const SIZE: usize = 30;
+    pub const SIGNATURE: u32 = 0x04034b50;
 
     pub fn parse(data: &[u8]) -> Result<ZipLocalFileHeaderFixed, Error> {
         if data.len() < Self::SIZE {
@@ -1169,7 +1225,7 @@ impl ZipLocalFileHeaderFixed {
             signature: le_u32(&data[0..4]),
             version_needed: le_u16(&data[4..6]),
             flags: le_u16(&data[6..8]),
-            compression_method: le_u16(&data[8..10]),
+            compression_method: CompressionMethodId(le_u16(&data[8..10])),
             last_mod_time: le_u16(&data[10..12]),
             last_mod_date: le_u16(&data[12..14]),
             crc32: le_u32(&data[14..18]),
@@ -1179,9 +1235,9 @@ impl ZipLocalFileHeaderFixed {
             extra_field_len: le_u16(&data[28..30]),
         };
 
-        if result.signature != LOCAL_FILE_HEADER_SIGNATURE {
+        if result.signature != Self::SIGNATURE {
             return Err(Error::from(ErrorKind::InvalidSignature {
-                expected: LOCAL_FILE_HEADER_SIGNATURE,
+                expected: Self::SIGNATURE,
                 actual: result.signature,
             }));
         }
@@ -1191,6 +1247,46 @@ impl ZipLocalFileHeaderFixed {
 
     pub fn variable_length(&self) -> usize {
         self.file_name_len as usize + self.extra_field_len as usize
+    }
+
+    pub fn write<W>(&self, mut writer: W) -> Result<(), Error>
+    where
+        W: Write,
+    {
+        writer
+            .write_all(&self.signature.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.version_needed.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.flags.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.compression_method.0.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.last_mod_time.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.last_mod_date.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.crc32.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.compressed_size.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.uncompressed_size.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.file_name_len.to_le_bytes())
+            .map_err(Error::io)?;
+        writer
+            .write_all(&self.extra_field_len.to_le_bytes())
+            .map_err(Error::io)?;
+        Ok(())
     }
 }
 

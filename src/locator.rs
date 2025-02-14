@@ -10,7 +10,8 @@ use std::fs::File;
 use std::io::Seek;
 
 const END_OF_CENTRAL_DIR_SIGNAUTRE: u32 = 0x06054b50;
-const END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES: [u8; 4] = END_OF_CENTRAL_DIR_SIGNAUTRE.to_le_bytes();
+pub(crate) const END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES: [u8; 4] =
+    END_OF_CENTRAL_DIR_SIGNAUTRE.to_le_bytes();
 
 // https://github.com/zlib-ng/minizip-ng/blob/55db144e03027b43263e5ebcb599bf0878ba58de/mz_zip.c#L78
 const END_OF_CENTRAL_DIR_MAX_OFFSET: u64 = 1 << 20;

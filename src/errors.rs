@@ -31,6 +31,7 @@ pub(crate) enum ErrorKind {
     InvalidChecksum { expected: u32, actual: u32 },
     InvalidSize { expected: u64, actual: u64 },
     InvalidUtf8(std::str::Utf8Error),
+    InvalidInput(String),
     IO(std::io::Error),
     Eof,
 }
@@ -79,6 +80,9 @@ impl std::fmt::Display for ErrorKind {
             }
             ErrorKind::InvalidUtf8(ref err) => {
                 write!(f, "Invalid UTF-8: {}", err)
+            }
+            ErrorKind::InvalidInput(ref msg) => {
+                write!(f, "Invalid input: {}", msg)
             }
         }
     }
