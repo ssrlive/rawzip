@@ -7,9 +7,11 @@ mod errors;
 mod locator;
 mod reader_at;
 mod utils;
+mod writer;
 
 pub use archive::*;
 pub use crc::crc32;
 pub use errors::Error;
 pub use locator::*;
 pub use reader_at::{FileReader, ReaderAt};
+pub use writer::*;
