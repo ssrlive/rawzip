@@ -68,10 +68,10 @@ impl<'a> ZipSliceArchive<'a> {
             .get(variable_length..)
             .ok_or(Error::from(ErrorKind::Eof))?;
 
-        let (data, rest) = if rest.len() < file_header.compressed_size as usize {
+        let (data, rest) = if rest.len() < entry.compressed_size_hint() as usize {
             return Err(Error::from(ErrorKind::Eof));
         } else {
-            rest.split_at(file_header.compressed_size as usize)
+            rest.split_at(entry.compressed_size_hint() as usize)
         };
 
         let expected_crc = if entry.has_data_descriptor {
