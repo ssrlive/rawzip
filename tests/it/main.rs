@@ -1,3 +1,4 @@
+use quickcheck_macros::quickcheck;
 use std::io::Cursor;
 
 #[derive(Debug, PartialEq)]
@@ -90,4 +91,35 @@ fn zip_integration_tests_slice() {
             data: Compression::Deflated(b"This small file is in ZIP64 format.\n".to_vec()),
         },]
     );
+}
+
+#[quickcheck]
+fn test_read_what_we_write_slice(data: Vec<u8>) {
+    let mut output = Vec::new();
+    {
+        let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
+        let mut file = archive
+            .new_file("file.txt", rawzip::ZipEntryOptions::default())
+            .unwrap();
+        let mut writer = rawzip::RawZipWriter::new(&mut file);
+        std::io::copy(&mut Cursor::new(&data), &mut writer).unwrap();
+        let (_, descriptor) = writer.finish().unwrap();
+        assert_eq!(descriptor.uncompressed_size(), data.len() as u64);
+        let compressed = file.finish(descriptor).unwrap();
+        assert_eq!(compressed, data.len() as u64);
+        archive.finish().unwrap();
+    }
+
+    let archive = rawzip::ZipArchive::from_slice(&output).unwrap();
+    let mut entries = archive.entries();
+    let entry = entries.next_entry().unwrap().unwrap();
+    assert_eq!(entry.file_safe_path().unwrap(), "file.txt");
+    assert_eq!(entry.compression_method(), rawzip::CompressionMethod::Store);
+    assert_eq!(entry.uncompressed_size_hint(), data.len() as u64);
+    assert_eq!(entry.compressed_size_hint(), data.len() as u64);
+    let wayfinder = entry.wayfinder();
+    let entry = archive.get_entry(wayfinder).unwrap();
+    let mut actual = Vec::new();
+    std::io::copy(&mut entry.data(), &mut Cursor::new(&mut actual)).unwrap();
+    assert_eq!(data, actual);
 }

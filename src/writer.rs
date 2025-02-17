@@ -329,7 +329,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
         self.compressed_bytes
     }
 
-    pub fn finish(self, mut output: DataDescriptorOutput) -> Result<(), Error>
+    pub fn finish(self, mut output: DataDescriptorOutput) -> Result<u64, Error>
     where
         W: Write,
     {
@@ -380,7 +380,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             crc: output.crc,
         });
 
-        Ok(())
+        Ok(self.compressed_bytes)
     }
 }
 
@@ -458,11 +458,21 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataDescriptorOutput {
     crc: u32,
     compressed_size: u64,
     uncompressed_size: u64,
+}
+
+impl DataDescriptorOutput {
+    pub fn crc(&self) -> u32 {
+        self.crc
+    }
+
+    pub fn uncompressed_size(&self) -> u64 {
+        self.uncompressed_size
+    }
 }
 
 #[derive(Debug)]
@@ -483,7 +493,7 @@ pub struct ZipEntryOptions {
 impl Default for ZipEntryOptions {
     fn default() -> Self {
         ZipEntryOptions {
-            compression_method: CompressionMethod::Deflate,
+            compression_method: CompressionMethod::Store,
         }
     }
 }
