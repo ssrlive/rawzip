@@ -1,3 +1,7 @@
+## v0.0.7 - February 18th, 2025
+
+- Update `ZipSliceArchive` to pull compressed data size from central directory instead of local file header
+
 ## v0.0.6 - February 14th, 2025
 
 - Add the ability to create Zip files
