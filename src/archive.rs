@@ -97,10 +97,13 @@ pub struct ZipSliceEntry<'a> {
 }
 
 impl<'a> ZipSliceEntry<'a> {
+    /// The raw, compressed data of the entry.
     pub fn data(&self) -> &'a [u8] {
         self.data
     }
 
+    /// Returns a reader that wraps a decompressor and verify the size and CRC
+    /// of the decompressed data once finished.
     pub fn verifying_reader<D>(&self, reader: D) -> ZipSliceVerifier<D>
     where
         D: std::io::Read,
@@ -157,6 +160,7 @@ pub struct ZipSliceEntries<'data> {
 }
 
 impl ZipSliceEntries<'_> {
+    /// Yield the next zip file entry in the central directory if there is any
     pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord>, Error> {
         let Ok(file_header) = ZipFileHeaderFixed::parse(self.entry_data) else {
             return Ok(None);
@@ -317,14 +321,20 @@ pub struct ZipVerification {
 }
 
 impl ZipVerification {
+    /// The CRC of the entry.
     pub fn crc(&self) -> u32 {
         self.crc
     }
 
+    /// The uncompressed size of the entry.
     pub fn size(&self) -> u64 {
         self.uncompressed_size
     }
 
+    /// Validates the size and CRC of the entry.
+    ///
+    /// This function will return an error if the size or CRC does not match
+    /// the expected values.
     pub fn valid(&self, rhs: ZipVerification) -> Result<(), Error> {
         if self.size() != rhs.size() {
             return Err(Error::from(ErrorKind::InvalidSize {
@@ -333,6 +343,7 @@ impl ZipVerification {
             }));
         }
 
+        // If the CRC is 0, then it is not verified.
         if self.crc() != 0 && self.crc() != rhs.crc() {
             return Err(Error::from(ErrorKind::InvalidChecksum {
                 expected: self.crc(),
@@ -412,7 +423,7 @@ where
     /// inflated data
     ///
     /// This function consumes self to communicate that the reader should be
-    /// done reading, as the any potential data descriptor is found after the
+    /// done reading, as any potential data descriptor is found after the
     /// data.
     pub fn claim_verifier(self) -> Result<ZipVerification, Error> {
         let expected_size = self.entry.uncompressed_size_hint();
@@ -538,6 +549,7 @@ impl<R> ZipEntries<'_, '_, R>
 where
     R: ReaderAt,
 {
+    /// Yield the next zip file entry in the central directory if there is any
     pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord>, Error> {
         let file_header = loop {
             let data = &self.buffer[self.pos..self.end];
@@ -841,7 +853,7 @@ impl<'a> ZipFilePath<'a> {
 
     fn normalize_alloc(s: &str) -> String {
         // 4.4.17.1 All slashes MUST be forward slashes '/'
-        let s = s.replace("\\", "/");
+        let s = s.replace('\\', "/");
 
         // 4.4.17.1 MUST NOT contain a drive or device letter
         let s = s.split(':').last().unwrap_or_default();
@@ -947,6 +959,14 @@ impl<'a> ZipFilePath<'a> {
     /// let path = ZipFilePath::new(&[b't', b'e', b's', b't', 0xFF]);
     /// assert!(path.normalize().is_err());
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// - [`Error::Utf8`] if the file path is not valid UTF-8.
+    ///
+    /// [Note that zip file names aren't always UTF-8][1]
+    ///
+    /// [1]: https://fasterthanli.me/articles/the-case-for-sans-io#character-encoding-differences
     pub fn normalize(&self) -> Result<Cow<str>, Error> {
         let mut name = std::str::from_utf8(self.as_bytes()).map_err(Error::utf8)?;
         let mut last = 0;
@@ -966,7 +986,7 @@ impl<'a> ZipFilePath<'a> {
             name = match name.as_bytes() {
                 [b'.', b'.', b'/', ..] => name.trim_start_matches("../"),
                 [b'.', b'/', ..] => name.trim_start_matches("./"),
-                [b'/', ..] => name.trim_start_matches("/"),
+                [b'/', ..] => name.trim_start_matches('/'),
                 _ => return Ok(Cow::Borrowed(name)),
             }
         }
@@ -1102,6 +1122,9 @@ impl<'a> ZipFileHeaderRecord<'a> {
         result
     }
 
+    /// Describes if the file is a directory.
+    ///
+    /// See [`ZipFilePath::is_dir`] for more information.
     pub fn is_dir(&self) -> bool {
         self.file_name.is_dir()
     }
@@ -1117,6 +1140,7 @@ impl<'a> ZipFileHeaderRecord<'a> {
         self.flags & 0x08 != 0
     }
 
+    /// Describes where the file's data is located within the archive.
     pub fn wayfinder(&self) -> ZipArchiveEntryWayfinder {
         ZipArchiveEntryWayfinder {
             uncompressed_size: self.uncompressed_size,
