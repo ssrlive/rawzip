@@ -235,3 +235,9 @@ where
         data.read_at(buf, offset)
     }
 }
+
+impl ReaderAt for Vec<u8> {
+    fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
+        self.as_slice().read_at(buf, offset)
+    }
+}

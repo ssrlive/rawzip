@@ -93,6 +93,25 @@ fn zip_integration_tests_slice() {
     );
 }
 
+/// This test is to ensure that the ZipArchive can be created from a Vec<u8>
+#[test]
+fn zip_integration_tests_vec() {
+    let data = std::fs::read("assets/zip64.zip").unwrap();
+    let archive = rawzip::ZipArchive::from_slice(data).unwrap();
+    assert_eq!(archive.comment().as_bytes(), b"");
+    let reader = archive.into_reader();
+    let mut buf = vec![0u8; rawzip::RECOMMENDED_BUFFER_SIZE];
+    let mut entries = reader.entries(&mut buf);
+    let mut count = 0;
+    while let Some(entry) = entries.next_entry().unwrap() {
+        if entry.is_dir() {
+            continue;
+        }
+        count += 1;
+    }
+    assert_eq!(count, 1);
+}
+
 #[quickcheck]
 fn test_read_what_we_write_slice(data: Vec<u8>) {
     let mut output = Vec::new();

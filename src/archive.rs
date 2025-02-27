@@ -22,15 +22,15 @@ pub(crate) const CENTRAL_HEADER_SIGNATURE: u32 = 0x02014b50;
 pub const RECOMMENDED_BUFFER_SIZE: usize = 1 << 16;
 
 #[derive(Debug, Clone)]
-pub struct ZipSliceArchive<'a> {
-    pub(crate) data: &'a [u8],
-    pub(crate) comment: ZipStr<'a>,
+pub struct ZipSliceArchive<T: AsRef<[u8]>> {
+    pub(crate) data: T,
     pub(crate) eocd: EndOfCentralDirectory,
 }
 
-impl<'a> ZipSliceArchive<'a> {
-    pub fn entries(&self) -> ZipSliceEntries<'a> {
-        let entry_data = &self.data[(self.eocd.offset() as usize).min(self.data.len())..];
+impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
+    pub fn entries(&self) -> ZipSliceEntries {
+        let data = self.data.as_ref();
+        let entry_data = &data[(self.eocd.offset() as usize).min(data.len())..];
         ZipSliceEntries {
             entry_data,
             base_offset: self.eocd.base_offset(),
@@ -41,29 +41,35 @@ impl<'a> ZipSliceArchive<'a> {
         self.eocd.entries()
     }
 
-    pub fn comment(&self) -> ZipStr {
-        self.comment
-    }
-
     /// the start of the zip file proper.
     pub fn base_offset(&self) -> u64 {
         self.eocd.base_offset()
+    }
+
+    pub fn comment(&self) -> ZipStr {
+        let data = self.data.as_ref();
+        let comment_start = self.eocd.stream_pos as usize + EndOfCentralDirectoryRecordFixed::SIZE;
+        let remaining = &data[comment_start..];
+        let comment_len = self.eocd.comment_len();
+        ZipStr::new(&remaining[..(comment_len).min(remaining.len())])
     }
 
     /// Convert the slice archive into a general archive.
     ///
     /// This is useful for downstream libraries who don't want to expose a bunch
     /// of methods and structs specialized for byte slices.
-    pub fn into_reader(self) -> ZipArchive<&'a [u8]> {
+    pub fn into_reader(self) -> ZipArchive<T> {
+        let comment = self.comment().into_owned();
         ZipArchive {
             reader: self.data,
-            comment: self.comment.into_owned(),
+            comment,
             eocd: self.eocd,
         }
     }
 
     pub fn get_entry(&self, entry: ZipArchiveEntryWayfinder) -> Result<ZipSliceEntry, Error> {
-        let header = &self.data[(entry.local_header_offset as usize).min(self.data.len())..];
+        let data = self.data.as_ref();
+        let header = &data[(entry.local_header_offset as usize).min(data.len())..];
         let file_header = ZipLocalFileHeaderFixed::parse(header)?;
         let header = &header[ZipLocalFileHeaderFixed::SIZE..];
 
@@ -190,7 +196,7 @@ impl ZipArchive<()> {
         ZipLocator::new().max_search_space(max_search_space)
     }
 
-    pub fn from_slice(data: &[u8]) -> Result<ZipSliceArchive, Error> {
+    pub fn from_slice<T: AsRef<[u8]>>(data: T) -> Result<ZipSliceArchive<T>, Error> {
         ZipLocator::new().locate_in_slice(data)
     }
 
@@ -535,6 +541,10 @@ impl EndOfCentralDirectory {
             .as_ref()
             .map(|z| z.num_entries)
             .unwrap_or(u64::from(self.eocd.num_entries))
+    }
+
+    fn comment_len(&self) -> usize {
+        self.eocd.comment_len as usize
     }
 }
 
