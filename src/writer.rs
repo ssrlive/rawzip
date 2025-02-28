@@ -62,7 +62,7 @@ impl Default for ZipArchiveWriterBuilder {
 /// let mut output = std::io::Cursor::new(Vec::new());
 /// let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
 /// let mut file = archive.new_file("file.txt", rawzip::ZipEntryOptions::default()).unwrap();
-/// let mut writer = rawzip::RawZipWriter::new(&mut file);
+/// let mut writer = rawzip::ZipDataWriter::new(&mut file);
 /// writer.write_all(b"Hello, world!").unwrap();
 /// let (_, output) = writer.finish().unwrap();
 /// file.finish(output).unwrap();
@@ -399,34 +399,40 @@ where
     }
 }
 
+/// A writer for the uncompressed data
+///
+/// This writer will keep track of the data necessary to write the data
+/// descriptor (ie: number of bytes written and the CRC32 checksum).
+///
+/// Once all the data has been written, invoke the `finish` method receive the
+/// data descriptor.
 #[derive(Debug)]
-pub struct RawZipWriter<W> {
+pub struct ZipDataWriter<W> {
     inner: W,
     uncompressed_bytes: u64,
     crc: u32,
 }
 
-impl<W> RawZipWriter<W> {
+impl<W> ZipDataWriter<W> {
     pub fn new(inner: W) -> Self {
-        RawZipWriter {
+        ZipDataWriter {
             inner,
             uncompressed_bytes: 0,
             crc: 0,
         }
     }
 
-    pub fn uncompressed_bytes(&self) -> u64 {
-        self.uncompressed_bytes
-    }
-
-    pub fn crc(&self) -> u32 {
-        self.crc
-    }
-
+    /// Gets a mutable reference to the underlying writer
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.inner
     }
 
+    /// Consumes self and returns the inner writer and the data descriptor to be
+    /// passed to a `ZipEntryWriter`.
+    ///
+    /// The writer is returned to facilitate situations where the underlying
+    /// compressor needs to be notified that no more data will be written so it
+    /// can write any sort of necesssary epilogue (think zstd).
     pub fn finish(mut self) -> Result<(W, DataDescriptorOutput), Error>
     where
         W: Write,
@@ -442,7 +448,7 @@ impl<W> RawZipWriter<W> {
     }
 }
 
-impl<W> Write for RawZipWriter<W>
+impl<W> Write for ZipDataWriter<W>
 where
     W: Write,
 {

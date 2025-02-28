@@ -11,7 +11,7 @@ fn main() {
     let output = {
         let mut encoder =
             flate2::write::DeflateEncoder::new(&mut file, flate2::Compression::default());
-        let mut writer = rawzip::RawZipWriter::new(&mut encoder);
+        let mut writer = rawzip::ZipDataWriter::new(&mut encoder);
         writer.write_all(b"Hello, world!").unwrap();
         let (_, output) = writer.finish().unwrap();
         output
