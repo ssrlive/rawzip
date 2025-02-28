@@ -50,7 +50,11 @@ impl<'a> ZipSliceArchive<'a> {
         self.eocd.base_offset()
     }
 
-    pub fn into_owned(self) -> ZipArchive<&'a [u8]> {
+    /// Convert the slice archive into a general archive.
+    ///
+    /// This is useful for downstream libraries who don't want to expose a bunch
+    /// of methods and structs specialized for byte slices.
+    pub fn into_reader(self) -> ZipArchive<&'a [u8]> {
         ZipArchive {
             reader: self.data,
             comment: self.comment.into_owned(),
