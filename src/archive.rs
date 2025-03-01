@@ -37,6 +37,13 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
         }
     }
 
+    /// Returns the byte slice that represents the zip file.
+    ///
+    /// This will include the entire input slice.
+    pub fn as_bytes(&self) -> &[u8] {
+        self.data.as_ref()
+    }
+
     pub fn entries_hint(&self) -> u64 {
         self.eocd.entries()
     }
