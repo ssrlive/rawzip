@@ -40,9 +40,9 @@ let mut file = archive.new_file("file.txt", options)?;
 // Wrap the file in a deflate compressor.
 let mut encoder = flate2::write::DeflateEncoder::new(&mut file, flate2::Compression::default());
 
-// Wrap the compressor in a RawZipWriter, which will track information for the
+// Wrap the compressor in a data writer, which will track information for the
 // Zip data descriptor (like uncompressed size and crc).
-let mut writer = rawzip::RawZipWriter::new(encoder);
+let mut writer = rawzip::ZipDataWriter::new(encoder);
 
 // Copy the data to the writer.
 std::io::copy(&mut &data[..], &mut writer)?;
