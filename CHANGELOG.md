@@ -1,3 +1,14 @@
+## v0.1.0 - March 1th, 2025
+
+The v0.1.0 release signifies that I'm satisfied with overall APIs for reading and writing. There are still plenty of missing aspects that would be useful for a general purpose zip library reader (like timestamps, permissions, etc) as well as writer (zip64), but these can be incorporated onto the current foundations as time and use cases permits.
+
+- Add `ZipSliceArchive::as_bytes` to get access to the underlying input byte stream
+- Add `ZipSliceEntry::claim_verifier`
+- Change `ZipLocator::locate_in_slice` to return input ownership when there is an error
+- Change `ZipSliceArchive` to be generic over any type that implements `AsRef<&[u8]>`
+- Rename `RawZipWriter` to `ZipDataWriter`
+- Rename `ZipSliceArchive::into_owned` to `into_reader`
+
 ## v0.0.7 - February 18th, 2025
 
 - Update `ZipSliceArchive` to pull compressed data size from central directory instead of local file header
