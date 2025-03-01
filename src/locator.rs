@@ -3,7 +3,7 @@ use crate::reader_at::{FileReader, ReaderAtExt};
 use crate::utils::{le_u16, le_u32, le_u64};
 use crate::{
     EndOfCentralDirectory, ReaderAt, Zip64EndOfCentralDirectoryRecord, ZipArchive, ZipSliceArchive,
-    ZipStr, ZipString, END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE,
+    ZipString, END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE,
 };
 use std::cell::RefCell;
 use std::fs::File;
@@ -39,19 +39,18 @@ impl ZipLocator {
         self
     }
 
-    pub fn locate_in_slice<'a>(&self, data: &'a [u8]) -> Result<ZipSliceArchive<'a>, Error> {
+    pub fn locate_in_slice<T: AsRef<[u8]>>(&self, data: T) -> Result<ZipSliceArchive<T>, Error> {
+        let original = data;
+        let data = original.as_ref();
         let location = find_end_of_central_dir_signature(data, self.max_search_space as usize)
             .ok_or(ErrorKind::MissingEndOfCentralDirectory)?;
 
         let eocd = EndOfCentralDirectoryRecordFixed::parse(&data[location..])?;
-        let remaining = &data[location + EndOfCentralDirectoryRecordFixed::SIZE..];
-        let comment = ZipStr::new(&remaining[..(eocd.comment_len as usize).min(remaining.len())]);
         let is_zip64 = eocd.is_zip64();
 
         if !is_zip64 {
             return Ok(ZipSliceArchive {
-                data,
-                comment,
+                data: original,
                 eocd: EndOfCentralDirectory {
                     zip64: None,
                     eocd,
@@ -67,8 +66,7 @@ impl ZipLocator {
         let zip64_record = Zip64EndOfCentralDirectoryRecord::parse(zip64_eocd)?;
 
         Ok(ZipSliceArchive {
-            data,
-            comment,
+            data: original,
             eocd: EndOfCentralDirectory {
                 zip64: Some(zip64_record),
                 eocd,
@@ -308,7 +306,7 @@ pub(crate) struct EndOfCentralDirectoryRecordFixed {
 }
 
 impl EndOfCentralDirectoryRecordFixed {
-    const SIZE: usize = 22;
+    pub(crate) const SIZE: usize = 22;
     pub fn parse(data: &[u8]) -> Result<EndOfCentralDirectoryRecordFixed, Error> {
         if data.len() < Self::SIZE {
             return Err(Error::from(ErrorKind::Eof));
