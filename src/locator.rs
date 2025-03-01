@@ -1,4 +1,4 @@
-use crate::errors::{Error, ErrorKind, ReaderError};
+use crate::errors::{Error, ErrorKind};
 use crate::reader_at::{FileReader, ReaderAtExt};
 use crate::utils::{le_u16, le_u32, le_u64};
 use crate::{
@@ -39,9 +39,7 @@ impl ZipLocator {
         self
     }
 
-    pub fn locate_in_slice<T: AsRef<[u8]>>(&self, data: T) -> Result<ZipSliceArchive<T>, Error> {
-        let original = data;
-        let data = original.as_ref();
+    fn locate_in_byte_slice(&self, data: &[u8]) -> Result<EndOfCentralDirectory, Error> {
         let location = find_end_of_central_dir_signature(data, self.max_search_space as usize)
             .ok_or(ErrorKind::MissingEndOfCentralDirectory)?;
 
@@ -49,13 +47,10 @@ impl ZipLocator {
         let is_zip64 = eocd.is_zip64();
 
         if !is_zip64 {
-            return Ok(ZipSliceArchive {
-                data: original,
-                eocd: EndOfCentralDirectory {
-                    zip64: None,
-                    eocd,
-                    stream_pos: location as u64,
-                },
+            return Ok(EndOfCentralDirectory {
+                zip64: None,
+                eocd,
+                stream_pos: location as u64,
             });
         }
 
@@ -65,33 +60,38 @@ impl ZipLocator {
         let zip64_eocd = &data[(zip64_locator.directory_offset as usize).min(data.len())..];
         let zip64_record = Zip64EndOfCentralDirectoryRecord::parse(zip64_eocd)?;
 
-        Ok(ZipSliceArchive {
-            data: original,
-            eocd: EndOfCentralDirectory {
-                zip64: Some(zip64_record),
-                eocd,
-                stream_pos: zip64_locator.directory_offset,
-            },
+        Ok(EndOfCentralDirectory {
+            zip64: Some(zip64_record),
+            eocd,
+            stream_pos: zip64_locator.directory_offset,
         })
+    }
+
+    pub fn locate_in_slice<T: AsRef<[u8]>>(
+        &self,
+        data: T,
+    ) -> Result<ZipSliceArchive<T>, (T, Error)> {
+        match self.locate_in_byte_slice(data.as_ref()) {
+            Ok(eocd) => Ok(ZipSliceArchive { data, eocd }),
+            Err(e) => Err((data, e)),
+        }
     }
 
     pub fn locate_in_file(
         &self,
         file: std::fs::File,
         buffer: &mut [u8],
-    ) -> Result<ZipArchive<FileReader>, ReaderError<File>> {
+    ) -> Result<ZipArchive<FileReader>, (File, Error)> {
         let reader = FileReader::from(file);
-        self.locate_in_reader(reader, buffer).map_err(|e| {
-            let (reader, error) = e.into_parts();
-            ReaderError::new(reader.into_inner(), error)
-        })
+        self.locate_in_reader(reader, buffer)
+            .map_err(|(fr, e)| (fr.into_inner(), e))
     }
 
     pub fn locate_in_reader<R>(
         &self,
         mut reader: R,
         buffer: &mut [u8],
-    ) -> Result<ZipArchive<R>, ReaderError<R>>
+    ) -> Result<ZipArchive<R>, (R, Error)>
     where
         R: ReaderAt + Seek,
     {
@@ -101,13 +101,10 @@ impl ZipLocator {
         let (stream_pos, buffer_pos) = match location {
             Ok(Some(location)) => location,
             Ok(None) => {
-                return Err(ReaderError::new(
-                    reader,
-                    Error::from(ErrorKind::MissingEndOfCentralDirectory),
-                ));
+                return Err((reader, Error::from(ErrorKind::MissingEndOfCentralDirectory)));
             }
             Err(error) => {
-                return Err(ReaderError::new(reader, Error::io(error)));
+                return Err((reader, Error::io(error)));
             }
         };
 
@@ -131,12 +128,12 @@ impl ZipLocator {
 
                     let read = match read {
                         Ok(read) => read,
-                        Err(e) => return Err(ReaderError::new(reader.inner, e)),
+                        Err(e) => return Err((reader.inner, e)),
                     };
 
                     end_of_central_directory = &buffer[..read];
                 }
-                Err(e) => return Err(ReaderError::new(reader.inner, e)),
+                Err(e) => return Err((reader.inner, e)),
             }
         };
 
@@ -158,7 +155,7 @@ impl ZipLocator {
             );
 
             if let Err(e) = read {
-                return Err(ReaderError::new(reader.inner, Error::io(e)));
+                return Err((reader.inner, Error::io(e)));
             }
         } else {
             comment.copy_from_slice(&end_of_central_directory[..comment_len]);
@@ -183,7 +180,7 @@ impl ZipLocator {
         // eocd or don't have enough data in the buffer
         let eocd64l_pos = if reader.is_marked() || eocd64l_size > buffer_pos {
             if (eocd64l_size as u64) > stream_pos {
-                return Err(ReaderError::new(
+                return Err((
                     reader.inner,
                     Error::from(ErrorKind::MissingZip64EndOfCentralDirectory),
                 ));
@@ -196,7 +193,7 @@ impl ZipLocator {
 
             match read {
                 Ok(_) => 0,
-                Err(e) => return Err(ReaderError::new(reader.inner, Error::io(e))),
+                Err(e) => return Err((reader.inner, Error::io(e))),
             }
         } else {
             buffer_pos - eocd64l_size
@@ -205,7 +202,7 @@ impl ZipLocator {
         let zip64l_eocd = &buffer[eocd64l_pos..eocd64l_pos + eocd64l_size];
         let zip64_locator = match Zip64EndOfCentralDirectoryLocatorRecord::parse(zip64l_eocd) {
             Ok(locator) => locator,
-            Err(e) => return Err(ReaderError::new(reader.inner, e)),
+            Err(e) => return Err((reader.inner, e)),
         };
 
         let zip64_eocd_fixed_size = Zip64EndOfCentralDirectoryRecord::SIZE;
@@ -222,7 +219,7 @@ impl ZipLocator {
             );
 
             if let Err(e) = read {
-                return Err(ReaderError::new(reader.inner, Error::io(e)));
+                return Err((reader.inner, Error::io(e)));
             }
 
             0
@@ -233,7 +230,7 @@ impl ZipLocator {
         let zip64_eocd = &buffer[eocd64_pos..];
         let zip64_record = match Zip64EndOfCentralDirectoryRecord::parse(zip64_eocd) {
             Ok(record) => record,
-            Err(e) => return Err(ReaderError::new(reader.inner, e)),
+            Err(e) => return Err((reader.inner, e)),
         };
 
         // todo: zip64 extensible data sector

@@ -205,7 +205,7 @@ impl ZipArchive<()> {
     }
 
     pub fn from_slice<T: AsRef<[u8]>>(data: T) -> Result<ZipSliceArchive<T>, Error> {
-        ZipLocator::new().locate_in_slice(data)
+        ZipLocator::new().locate_in_slice(data).map_err(|(_, e)| e)
     }
 
     pub fn from_file(
@@ -214,7 +214,7 @@ impl ZipArchive<()> {
     ) -> Result<ZipArchive<FileReader>, Error> {
         ZipLocator::new()
             .locate_in_file(file, buffer)
-            .map_err(|e| e.into_parts().1)
+            .map_err(|(_, e)| e)
     }
 
     pub fn from_seekable<R>(
@@ -227,7 +227,7 @@ impl ZipArchive<()> {
         let reader = MutexReader::new(reader);
         ZipLocator::new()
             .locate_in_reader(reader, buffer)
-            .map_err(|e| e.into_parts().1)
+            .map_err(|(_, e)| e)
     }
 }
 
