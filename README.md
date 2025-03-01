@@ -75,7 +75,7 @@ assert_eq!(entry.file_safe_path()?, "file.txt");
 assert_eq!(entry.compression_method(), rawzip::CompressionMethod::Deflate);
 
 // Assert the uncompressed size hint. Be warned that this may not be the actual,
-// uncompressed sizef or malicious or corrupted files.
+// uncompressed size for malicious or corrupted files.
 assert_eq!(entry.uncompressed_size_hint(), data.len() as u64);
 
 // Before we need to access the entry's data, we need to know where it is in the archive.
