@@ -106,6 +106,14 @@ impl<'a> ZipSliceEntry<'a> {
         self.data
     }
 
+    /// Returns a verifier for the CRC and uncompressed size of the entry.
+    ///
+    /// Useful when it's more practical to oneshot decompress the data, otherwise
+    /// use [`verifying_reader`] to stream decompression and verification.
+    pub fn claim_verifier(&self) -> ZipVerification {
+        self.verifier
+    }
+
     /// Returns a reader that wraps a decompressor and verify the size and CRC
     /// of the decompressed data once finished.
     pub fn verifying_reader<D>(&self, reader: D) -> ZipSliceVerifier<D>
