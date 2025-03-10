@@ -20,9 +20,8 @@ In its current state, rawzip should not be considered a general purpose Zip libr
 ## Example
 
 ```rust
-# use std::io::Read;
+use std::io::Read;
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
 // Let's create a Zip archive with a single file, "file.txt", containing the text "Hello, world!"
 // and read it back out.
 let data = b"Hello, world!";
@@ -93,6 +92,5 @@ std::io::copy(&mut reader, &mut actual)?;
 
 // Assert the data is what we wrote.
 assert_eq!(&data[..], actual);
-# Ok(())
-# }
+Ok::<(), Box<dyn std::error::Error>>(())
 ```
