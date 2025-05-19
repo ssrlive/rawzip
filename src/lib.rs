@@ -11,7 +11,7 @@ mod writer;
 
 pub use archive::*;
 pub use crc::crc32;
-pub use errors::Error;
+pub use errors::{Error, ErrorKind};
 pub use locator::*;
 pub use reader_at::{FileReader, ReaderAt};
 pub use writer::*;

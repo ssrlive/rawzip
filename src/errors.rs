@@ -1,6 +1,7 @@
+/// An error that occurred while reading or writing a zip file
 #[derive(Debug)]
 pub struct Error {
-    inner: ErrorInner,
+    inner: Box<ErrorInner>,
 }
 
 impl Error {
@@ -15,6 +16,11 @@ impl Error {
     pub(crate) fn is_eof(&self) -> bool {
         matches!(self.inner.kind, ErrorKind::Eof)
     }
+
+    /// The kind of error that occurred
+    pub fn kind(&self) -> &ErrorKind {
+        &self.inner.kind
+    }
 }
 
 #[derive(Debug)]
@@ -22,17 +28,38 @@ struct ErrorInner {
     kind: ErrorKind,
 }
 
+/// The kind of error that occurred
 #[derive(Debug)]
-pub(crate) enum ErrorKind {
+#[non_exhaustive]
+pub enum ErrorKind {
+    /// Missing end of central directory
     MissingEndOfCentralDirectory,
+
+    /// Missing zip64 end of central directory
     MissingZip64EndOfCentralDirectory,
+
+    /// Buffer size too small
     BufferTooSmall,
+
+    /// Invalid end of central directory signature
     InvalidSignature { expected: u32, actual: u32 },
+
+    /// Invalid inflated file crc checksum
     InvalidChecksum { expected: u32, actual: u32 },
+
+    /// An unexpected inflated file size
     InvalidSize { expected: u64, actual: u64 },
+
+    /// Invalid UTF-8 sequence
     InvalidUtf8(std::str::Utf8Error),
-    InvalidInput(String),
+
+    /// An invalid input error with associated message
+    InvalidInput { msg: String },
+
+    /// An IO error
     IO(std::io::Error),
+
+    /// An unexpected end of file
     Eof,
 }
 
@@ -81,7 +108,7 @@ impl std::fmt::Display for ErrorKind {
             ErrorKind::InvalidUtf8(ref err) => {
                 write!(f, "Invalid UTF-8: {}", err)
             }
-            ErrorKind::InvalidInput(ref msg) => {
+            ErrorKind::InvalidInput { ref msg } => {
                 write!(f, "Invalid input: {}", msg)
             }
         }
@@ -91,7 +118,7 @@ impl std::fmt::Display for ErrorKind {
 impl From<ErrorKind> for Error {
     fn from(kind: ErrorKind) -> Error {
         Error {
-            inner: ErrorInner { kind },
+            inner: Box::new(ErrorInner { kind }),
         }
     }
 }
