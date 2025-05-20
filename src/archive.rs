@@ -53,6 +53,7 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
         self.eocd.base_offset()
     }
 
+    /// The comment of the zip file.
     pub fn comment(&self) -> ZipStr {
         let data = self.data.as_ref();
         let comment_start = self.eocd.stream_pos as usize + EndOfCentralDirectoryRecordFixed::SIZE;
