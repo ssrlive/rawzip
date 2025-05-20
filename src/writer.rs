@@ -93,17 +93,17 @@ where
     pub fn new_dir(&mut self, name: &str) -> Result<(), Error> {
         let file_path = ZipFilePath::new(name.as_bytes());
         if !file_path.is_dir() {
-            return Err(Error::from(ErrorKind::InvalidInput(
-                "not a directory".to_string(),
-            )));
+            return Err(Error::from(ErrorKind::InvalidInput {
+                msg: "not a directory".to_string(),
+            }));
         }
 
         let safe_file_path = file_path.normalize()?.into_owned();
 
         if safe_file_path.len() > u16::MAX as usize {
-            return Err(Error::from(ErrorKind::InvalidInput(
-                "directory name too long".to_string(),
-            )));
+            return Err(Error::from(ErrorKind::InvalidInput {
+                msg: "directory name too long".to_string(),
+            }));
         }
 
         let local_header_offset = self.writer.count();
@@ -148,9 +148,9 @@ where
         let safe_file_path = file_path.normalize()?.trim_end_matches('/').to_owned();
 
         if safe_file_path.len() > u16::MAX as usize {
-            return Err(Error::from(ErrorKind::InvalidInput(
-                "file name too long".to_string(),
-            )));
+            return Err(Error::from(ErrorKind::InvalidInput {
+                msg: "file name too long".to_string(),
+            }));
         }
 
         let local_header_offset = self.writer.count();
@@ -191,9 +191,9 @@ where
 
         // TODO: zip64
         if self.files.len() > u16::MAX as usize {
-            return Err(Error::from(ErrorKind::InvalidInput(
-                "too many files".to_string(),
-            )));
+            return Err(Error::from(ErrorKind::InvalidInput {
+                msg: "too many files".to_string(),
+            }));
         }
 
         let central_directory_entries = self.files.len() as u16;
@@ -202,9 +202,9 @@ where
             // TODO: zip64
             if file.compressed_size >= u32::MAX as u64 || file.uncompressed_size >= u32::MAX as u64
             {
-                return Err(Error::from(ErrorKind::InvalidInput(
-                    "file too large".to_string(),
-                )));
+                return Err(Error::from(ErrorKind::InvalidInput {
+                    msg: "file too large".to_string(),
+                }));
             }
 
             self.writer
@@ -268,9 +268,9 @@ where
 
         // TODO: zip64
         if central_directory_size >= u32::MAX as u64 {
-            return Err(Error::from(ErrorKind::InvalidInput(
-                "central directory too large".to_string(),
-            )));
+            return Err(Error::from(ErrorKind::InvalidInput {
+                msg: "central directory too large".to_string(),
+            }));
         }
 
         self.writer
