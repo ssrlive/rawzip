@@ -139,7 +139,8 @@ impl ZipLocator {
 
         let is_zip64 = eocd.is_zip64();
 
-        end_of_central_directory = &buffer[EndOfCentralDirectoryRecordFixed::SIZE..];
+        end_of_central_directory =
+            &end_of_central_directory[EndOfCentralDirectoryRecordFixed::SIZE..];
 
         let comment_len = eocd.comment_len as usize;
         let mut comment = vec![0u8; comment_len];

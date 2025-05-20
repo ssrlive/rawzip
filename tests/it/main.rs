@@ -28,34 +28,34 @@ enum ExpectedContent {
 
 static ZIP_TEST_CASES: LazyLock<Vec<ZipTestCase>> = LazyLock::new(|| {
     vec![
-        // ZipTestCase {
-        //     name: "zip64.zip",
-        //     comment: Some(b""),
-        //     files: vec![ZipTestFileEntry {
-        //         name: "README",
-        //         expected_content: ExpectedContent::Content(
-        //             b"This small file is in ZIP64 format.\n".to_vec(),
-        //         ),
-        //     }],
-        //     ..Default::default()
-        // },
-        // ZipTestCase {
-        //     name: "test.zip",
-        //     comment: Some(b"This is a zipfile comment."),
-        //     files: vec![
-        //         ZipTestFileEntry {
-        //             name: "test.txt",
-        //             expected_content: ExpectedContent::Content(
-        //                 b"This is a test text file.\n".to_vec(),
-        //             ),
-        //         },
-        //         ZipTestFileEntry {
-        //             name: "gophercolor16x16.png",
-        //             expected_content: ExpectedContent::File("gophercolor16x16.png"),
-        //         },
-        //     ],
-        //     ..Default::default()
-        // },
+        ZipTestCase {
+            name: "zip64.zip",
+            comment: Some(b""),
+            files: vec![ZipTestFileEntry {
+                name: "README",
+                expected_content: ExpectedContent::Content(
+                    b"This small file is in ZIP64 format.\n".to_vec(),
+                ),
+            }],
+            ..Default::default()
+        },
+        ZipTestCase {
+            name: "test.zip",
+            comment: Some(b"This is a zipfile comment."),
+            files: vec![
+                ZipTestFileEntry {
+                    name: "test.txt",
+                    expected_content: ExpectedContent::Content(
+                        b"This is a test text file.\n".to_vec(),
+                    ),
+                },
+                ZipTestFileEntry {
+                    name: "gophercolor16x16.png",
+                    expected_content: ExpectedContent::File("gophercolor16x16.png"),
+                },
+            ],
+            ..Default::default()
+        },
         ZipTestCase {
             name: "readme.notzip",
             expected_error_kind: Some(ErrorKind::MissingEndOfCentralDirectory),
