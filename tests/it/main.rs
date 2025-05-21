@@ -61,6 +61,225 @@ static ZIP_TEST_CASES: LazyLock<Vec<ZipTestCase>> = LazyLock::new(|| {
             expected_error_kind: Some(ErrorKind::MissingEndOfCentralDirectory),
             ..Default::default()
         },
+        ZipTestCase {
+            name: "test-trailing-junk.zip",
+            comment: Some(b"This is a zipfile comment."),
+            files: vec![
+                ZipTestFileEntry {
+                    name: "test.txt",
+                    expected_content: ExpectedContent::Content(
+                        b"This is a test text file.\n".to_vec(),
+                    ),
+                },
+                ZipTestFileEntry {
+                    name: "gophercolor16x16.png",
+                    expected_content: ExpectedContent::File("gophercolor16x16.png"),
+                },
+            ],
+            ..Default::default()
+        },
+        ZipTestCase {
+            name: "test-prefix.zip",
+            comment: Some(b"This is a zipfile comment."),
+            files: vec![
+                ZipTestFileEntry {
+                    name: "test.txt",
+                    expected_content: ExpectedContent::Content(
+                        b"This is a test text file.\n".to_vec(),
+                    ),
+                },
+                ZipTestFileEntry {
+                    name: "gophercolor16x16.png",
+                    expected_content: ExpectedContent::File("gophercolor16x16.png"),
+                },
+            ],
+            ..Default::default()
+        },
+        // ZipTestCase {
+        //     name: "test-baddirsz.zip",
+        //     comment: Some(b"This is a zipfile comment."),
+        //     files: vec![
+        //         ZipTestFileEntry {
+        //             name: "test.txt",
+        //             expected_content: ExpectedContent::Content(
+        //                 b"This is a test text file.\n".to_vec(),
+        //             ),
+        //         },
+        //         ZipTestFileEntry {
+        //             name: "gophercolor16x16.png",
+        //             expected_content: ExpectedContent::File("gophercolor16x16.png"),
+        //         },
+        //     ],
+        //     ..Default::default()
+        // },
+        // ZipTestCase {
+        //     name: "test-badbase.zip",
+        //     comment: Some(b"This is a zipfile comment."),
+        //     files: vec![
+        //         ZipTestFileEntry {
+        //             name: "test.txt",
+        //             expected_content: ExpectedContent::Content(
+        //                 b"This is a test text file.\n".to_vec(),
+        //             ),
+        //         },
+        //         ZipTestFileEntry {
+        //             name: "gophercolor16x16.png",
+        //             expected_content: ExpectedContent::File("gophercolor16x16.png"),
+        //         },
+        //     ],
+        //     ..Default::default()
+        // },
+        ZipTestCase {
+            name: "symlink.zip",
+            files: vec![ZipTestFileEntry {
+                name: "symlink",
+                expected_content: ExpectedContent::Content(b"../target".to_vec()),
+            }],
+            ..Default::default()
+        },
+        ZipTestCase {
+            name: "readme.zip",
+            ..Default::default()
+        },
+        ZipTestCase {
+            // created in windows XP file manager.
+            name: "winxp.zip",
+            files: vec![
+                ZipTestFileEntry {
+                    name: "hello",
+                    expected_content: ExpectedContent::Content(b"world \r\n".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "dir/bar",
+                    expected_content: ExpectedContent::Content(b"foo \r\n".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "dir/empty/",
+                    expected_content: ExpectedContent::Content(b"".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "readonly",
+                    expected_content: ExpectedContent::Content(b"important \r\n".to_vec()),
+                },
+            ],
+            ..Default::default()
+        },
+        ZipTestCase {
+            // created by Zip 3.0 under Linux
+            name: "unix.zip",
+            files: vec![
+                ZipTestFileEntry {
+                    name: "hello",
+                    expected_content: ExpectedContent::Content(b"world \r\n".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "dir/bar",
+                    expected_content: ExpectedContent::Content(b"foo \r\n".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "dir/empty/",
+                    expected_content: ExpectedContent::Content(b"".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "readonly",
+                    expected_content: ExpectedContent::Content(b"important \r\n".to_vec()),
+                },
+            ],
+            ..Default::default()
+        },
+        ZipTestCase {
+            // created by Go, after we wrote the "optional" data
+            // descriptor signatures (which are required by macOS)
+            name: "go-with-datadesc-sig.zip",
+            files: vec![
+                ZipTestFileEntry {
+                    name: "foo.txt",
+                    expected_content: ExpectedContent::Content(b"foo\n".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "bar.txt",
+                    expected_content: ExpectedContent::Content(b"bar\n".to_vec()),
+                },
+            ],
+            ..Default::default()
+        },
+        // ZipTestCase {
+        //     name: "Bad-CRC32-in-data-descriptor",
+        //     files: vec![
+        //         ZipTestFileEntry {
+        //             name: "foo.txt",
+        //             expected_content: ExpectedContent::Content(b"foo\n".to_vec()),
+        //         },
+        //         ZipTestFileEntry {
+        //             name: "bar.txt",
+        //             expected_content: ExpectedContent::Content(b"bar\n".to_vec()),
+        //         },
+        //     ],
+        //     ..Default::default()
+        // },
+        // Tests that we verify (and accept valid) crc32s on files
+        // with crc32s in their file header (not in data descriptors)
+        ZipTestCase {
+            name: "crc32-not-streamed.zip",
+            files: vec![
+                ZipTestFileEntry {
+                    name: "foo.txt",
+                    expected_content: ExpectedContent::Content(b"foo\n".to_vec()),
+                },
+                ZipTestFileEntry {
+                    name: "bar.txt",
+                    expected_content: ExpectedContent::Content(b"bar\n".to_vec()),
+                },
+            ],
+            ..Default::default()
+        },
+        // Tests that we verify (and reject invalid) crc32s on files
+        // with crc32s in their file header (not in data descriptors)
+        // {
+        // 	Name:   "crc32-not-streamed.zip",
+        // 	Source: returnCorruptNotStreamedZip,
+        // 	File: []ZipTestFile{
+        // 		{
+        // 			Name:       "foo.txt",
+        // 			Content:    []byte("foo\n"),
+        // 			Modified:   time.Date(2012, 3, 8, 16, 59, 10, 0, timeZone(-8*time.Hour)),
+        // 			Mode:       0644,
+        // 			ContentErr: ErrChecksum,
+        // 		},
+        // 		{
+        // 			Name:     "bar.txt",
+        // 			Content:  []byte("bar\n"),
+        // 			Modified: time.Date(2012, 3, 8, 16, 59, 12, 0, timeZone(-8*time.Hour)),
+        // 			Mode:     0644,
+        // 		},
+        // 	},
+        // },
+
+        // Another zip64 file with different Extras fields. (golang.org/issue/7069)
+        ZipTestCase {
+            name: "zip64-2.zip",
+            files: vec![ZipTestFileEntry {
+                name: "README",
+                expected_content: ExpectedContent::Content(
+                    b"This small file is in ZIP64 format.\n".to_vec(),
+                ),
+            }],
+            ..Default::default()
+        },
+        // Largest possible non-zip64 file, with no zip64 header.
+        // {
+        // 	Name:   "big.zip",
+        // 	Source: returnBigZipBytes,
+        // 	File: []ZipTestFile{
+        // 		{
+        // 			Name:     "big.file",
+        // 			Content:  nil,
+        // 			Size:     1<<32 - 1,
+        // 			Modified: time.Date(1979, 11, 30, 0, 0, 0, 0, time.UTC),
+        // 			Mode:     0666,
+        // 		},
+        // 	},
+        // },
     ]
 });
 
@@ -86,10 +305,6 @@ fn process_archive_files<R: rawzip::ReaderAt>(
         loop {
             match entries_for_current_expected_file.next_entry() {
                 Ok(Some(entry)) => {
-                    if entry.is_dir() {
-                        continue;
-                    }
-
                     let file_name = entry.file_safe_path().unwrap();
 
                     if file_name == expected_file.name {
@@ -187,10 +402,6 @@ fn process_slice_archive_files(
         loop {
             match entries_for_current_expected_file.next_entry() {
                 Ok(Some(entry)) => {
-                    if entry.is_dir() {
-                        continue;
-                    }
-
                     let file_name = entry.file_safe_path().unwrap();
 
                     if file_name == expected_file.name {
@@ -294,13 +505,12 @@ fn run_zip_test_case(case: &ZipTestCase) {
         }
         (Err(e), Some(expected)) => {
             assert!(
-                errors_eq(&e, &expected),
+                errors_eq(&e, expected),
                 "Error kind mismatch for {}: {:?} != {:?}",
                 case.name,
                 e.kind(),
                 expected
             );
-            return;
         }
     };
 }
@@ -329,13 +539,12 @@ fn run_zip_test_case_slice(case: &ZipTestCase) {
         }
         (Err(e), Some(expected)) => {
             assert!(
-                errors_eq(&e, &expected),
+                errors_eq(&e, expected),
                 "Error kind mismatch for {}: {:?} != {:?}",
                 case.name,
                 e.kind(),
                 expected
             );
-            return;
         }
     };
 }
