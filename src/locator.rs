@@ -208,7 +208,7 @@ impl ZipLocator {
         let zip64_eocd_fixed_size = Zip64EndOfCentralDirectoryRecord::SIZE;
 
         // Unhappy path: zip64 eocd is not in the original buffer
-        let eocd64_pos = if reader.is_marked()
+        let (eocd64_start, eocd64_end) = if reader.is_marked()
             || zip64_locator.directory_offset > stream_pos
             || stream_pos - zip64_locator.directory_offset > buffer_pos as u64
         {
@@ -218,16 +218,20 @@ impl ZipLocator {
                 zip64_locator.directory_offset,
             );
 
-            if let Err(e) = read {
-                return Err((reader.inner, Error::io(e)));
+            match read {
+                Ok(read) => (0, read),
+                Err(e) => {
+                    return Err((reader.inner, Error::io(e)));
+                }
             }
-
-            0
         } else {
-            buffer_pos - (stream_pos - zip64_locator.directory_offset) as usize
+            (
+                buffer_pos - (stream_pos - zip64_locator.directory_offset) as usize,
+                buffer_valid_len,
+            )
         };
 
-        let zip64_eocd = &buffer[eocd64_pos..];
+        let zip64_eocd = &buffer[eocd64_start..eocd64_end];
         let zip64_record = match Zip64EndOfCentralDirectoryRecord::parse(zip64_eocd) {
             Ok(record) => record,
             Err(e) => return Err((reader.inner, e)),
