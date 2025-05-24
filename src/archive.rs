@@ -193,9 +193,13 @@ impl ZipSliceEntries<'_> {
         };
         self.entry_data = &self.entry_data[ZipFileHeaderFixed::SIZE..];
         let variable_length = file_header.variable_length();
-        let mut entry = ZipFileHeaderRecord::from_parts(file_header, self.entry_data);
+        if self.entry_data.len() < variable_length {
+            return Err(Error::from(ErrorKind::Eof));
+        }
+        let (header_data, entry_data) = self.entry_data.split_at(variable_length);
+        let mut entry = ZipFileHeaderRecord::from_parts(file_header, header_data);
         entry.local_header_offset += self.base_offset;
-        self.entry_data = &self.entry_data[variable_length..];
+        self.entry_data = entry_data;
         Ok(Some(entry))
     }
 }
@@ -1483,5 +1487,23 @@ mod tests {
         let mut buf = vec![0u8; RECOMMENDED_BUFFER_SIZE];
         let archive = ZipArchive::from_seekable(Cursor::new(data), &mut buf);
         assert!(archive.is_err());
+    }
+
+    #[test]
+    pub fn trunc_eocd_entry() {
+        let data = [
+            80, 75, 1, 2, 159, 159, 159, 159, 159, 159, 159, 159, 159, 0, 241, 205, 0, 80, 75, 5,
+            6, 0, 48, 249, 0, 250, 255, 255, 255, 255, 251, 42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            35, 0,
+        ];
+
+        let archive = ZipArchive::from_slice(data).unwrap();
+        let mut entries = archive.entries();
+        assert!(entries.next_entry().is_err());
+
+        let mut buf = vec![0u8; RECOMMENDED_BUFFER_SIZE];
+        let archive = ZipArchive::from_seekable(Cursor::new(data), &mut buf).unwrap();
+        let mut entries = archive.entries(&mut buf);
+        assert!(entries.next_entry().is_err());
     }
 }
