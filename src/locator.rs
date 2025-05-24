@@ -95,11 +95,11 @@ impl ZipLocator {
     where
         R: ReaderAt + Seek,
     {
-        let location =
+        let location_result =
             find_end_of_central_dir_with_seek(&mut reader, buffer, self.max_search_space);
 
-        let (stream_pos, buffer_pos) = match location {
-            Ok(Some(location)) => location,
+        let (stream_pos, buffer_pos, buffer_valid_len) = match location_result {
+            Ok(Some(location_tuple)) => location_tuple,
             Ok(None) => {
                 return Err((reader, Error::from(ErrorKind::MissingEndOfCentralDirectory)));
             }
@@ -114,7 +114,7 @@ impl ZipLocator {
         // the the data already in memory as much as possible.
         let reader = Marker::new(reader);
 
-        let mut end_of_central_directory = &buffer[buffer_pos..];
+        let mut end_of_central_directory = &buffer[buffer_pos..buffer_valid_len];
         let eocd = loop {
             match EndOfCentralDirectoryRecordFixed::parse(end_of_central_directory) {
                 Ok(record) => break record,
@@ -399,7 +399,7 @@ pub(crate) fn find_end_of_central_dir_with_seek<T>(
     mut reader: T,
     buffer: &mut [u8],
     max_search_space: u64,
-) -> std::io::Result<Option<(u64, usize)>>
+) -> std::io::Result<Option<(u64, usize, usize)>>
 where
     T: ReaderAt + Seek,
 {
@@ -433,7 +433,7 @@ where
         let haystack = &buffer[..read_size + carry_over];
         if let Some(i) = backwards_find(haystack, &END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES) {
             let stream_pos = (max_back + remaining) + (i as u64);
-            return Ok(Some((stream_pos, i)));
+            return Ok(Some((stream_pos, i, read_size + carry_over)));
         }
 
         if remaining == 0 {
@@ -484,12 +484,25 @@ mod tests {
 
         let mut buffer = vec![0u8; chunk_size.max(4) as usize];
         let reader = std::io::Cursor::new(data);
-        let (index, buffer_index) =
+        let (index, buffer_index, buffer_valid_len) =
             find_end_of_central_dir_with_seek(reader, &mut buffer, max_search_space)
                 .unwrap()
                 .unwrap();
 
         assert_eq!(index, result as u64);
+        assert!(buffer_valid_len > 0, "buffer_valid_len should be positive");
+        assert!(
+            buffer_valid_len <= buffer.len(),
+            "buffer_valid_len should not exceed buffer capacity"
+        );
+        assert!(
+            buffer_index < buffer_valid_len,
+            "buffer_index should be within buffer_valid_len"
+        );
+        assert!(
+            buffer_index + END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES.len() <= buffer_valid_len,
+            "signature should be within valid part of buffer"
+        );
         assert_eq!(
             buffer[buffer_index..buffer_index + 4],
             END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES
@@ -509,7 +522,22 @@ mod tests {
         let curse =
             find_end_of_central_dir_with_seek(reader, &mut buffer, max_search_space).unwrap();
 
-        assert_eq!(mem.map(|x| x as u64), curse.map(|(a, _)| a));
+        assert_eq!(mem.map(|x| x as u64), curse.map(|(a, _, _)| a));
+        if let Some((_, buffer_index, buffer_valid_len)) = curse {
+            assert!(buffer_valid_len > 0, "buffer_valid_len should be positive");
+            assert!(
+                buffer_valid_len <= buffer.len(),
+                "buffer_valid_len should not exceed buffer capacity"
+            );
+            assert!(
+                buffer_index < buffer_valid_len,
+                "buffer_index should be within buffer_valid_len"
+            );
+            assert!(
+                buffer_index + END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES.len() <= buffer_valid_len,
+                "signature should be within valid part of buffer"
+            );
+        }
     }
 
     #[rstest]
@@ -556,10 +584,23 @@ mod tests {
         let mut buffer = vec![0u8; buffer_size];
         let found =
             find_end_of_central_dir_with_seek(cursor, &mut buffer, max_search_space).unwrap();
-        assert_eq!(found.map(|(a, _)| a), expected);
+        assert_eq!(found.map(|(a, _, _)| a), expected);
 
         if expected.is_some() {
-            let (_, buffer_pos) = found.unwrap();
+            let (_, buffer_pos, buffer_valid_len) = found.unwrap();
+            assert!(buffer_valid_len > 0, "buffer_valid_len should be positive");
+            assert!(
+                buffer_valid_len <= buffer_size,
+                "buffer_valid_len should not exceed buffer capacity"
+            );
+            assert!(
+                buffer_pos < buffer_valid_len,
+                "buffer_index should be within buffer_valid_len"
+            );
+            assert!(
+                buffer_pos + END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES.len() <= buffer_valid_len,
+                "signature should be within valid part of buffer"
+            );
             assert_eq!(
                 buffer[buffer_pos..buffer_pos + 4],
                 END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES
