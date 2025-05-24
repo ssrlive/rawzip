@@ -149,13 +149,12 @@ impl ZipLocator {
         if end_of_central_directory.len() < comment_len {
             comment[..end_of_central_directory.len()].copy_from_slice(end_of_central_directory);
             let pos = end_of_central_directory.len();
-            let read = reader.read_at_most_at(
+            let result = reader.read_exact_at(
                 &mut comment[pos..],
-                comment_len - pos,
                 stream_pos + EndOfCentralDirectoryRecordFixed::SIZE as u64 + pos as u64,
             );
 
-            if let Err(e) = read {
+            if let Err(e) = result {
                 return Err((reader.inner, Error::io(e)));
             }
         } else {

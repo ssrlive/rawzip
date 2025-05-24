@@ -45,13 +45,6 @@ pub(crate) trait ReaderAtExt {
 
     fn read_at_least_at(&self, buffer: &mut [u8], size: usize, offset: u64)
         -> Result<usize, Error>;
-
-    fn read_at_most_at(
-        &self,
-        buffer: &mut [u8],
-        size: usize,
-        offset: u64,
-    ) -> std::io::Result<usize>;
 }
 
 impl<T: ReaderAt> ReaderAtExt for T {
@@ -92,23 +85,6 @@ impl<T: ReaderAt> ReaderAtExt for T {
         }
 
         Ok(read)
-    }
-
-    fn read_at_most_at(
-        &self,
-        buffer: &mut [u8],
-        mut size: usize,
-        offset: u64,
-    ) -> std::io::Result<usize> {
-        size = size.min(buffer.len());
-        let mut pos = 0;
-        while pos < size {
-            match self.read_at(&mut buffer[pos..], offset + pos as u64)? {
-                0 => break,
-                n => pos += n,
-            }
-        }
-        Ok(pos)
     }
 }
 
