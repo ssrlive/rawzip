@@ -1468,4 +1468,20 @@ mod tests {
         let archive = ZipArchive::from_slice(data);
         assert!(archive.is_err());
     }
+
+    #[test]
+    pub fn trunc_eocd64() {
+        let data = [
+            80, 75, 6, 7, 21, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 10, 0, 59, 59, 80, 75, 5, 6, 0,
+            255, 255, 255, 255, 255, 255, 0, 0, 0, 80, 75, 6, 6, 0, 0, 6, 0, 0, 250, 255, 255, 255,
+            255, 251, 0, 0, 0, 0, 80, 5, 6, 0, 0, 0, 0, 56, 0, 0, 0, 0, 10,
+        ];
+
+        let archive = ZipArchive::from_slice(data);
+        assert!(archive.is_err());
+
+        let mut buf = vec![0u8; RECOMMENDED_BUFFER_SIZE];
+        let archive = ZipArchive::from_seekable(Cursor::new(data), &mut buf);
+        assert!(archive.is_err());
+    }
 }
