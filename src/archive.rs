@@ -886,7 +886,7 @@ impl<'a> ZipFilePath<'a> {
         let s = s.replace('\\', "/");
 
         // 4.4.17.1 MUST NOT contain a drive or device letter
-        let s = s.split(':').last().unwrap_or_default();
+        let s = s.split(':').next_back().unwrap_or_default();
 
         // resolve path components
         let splits = s.split('/');
