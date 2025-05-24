@@ -1414,6 +1414,7 @@ impl ZipFileHeaderFixed {
 mod tests {
     use super::*;
     use rstest::rstest;
+    use std::io::Cursor;
 
     #[rstest]
     #[case(b"test.txt", "test.txt")]
@@ -1444,5 +1445,13 @@ mod tests {
     #[case(&[b't', b'e', b's', b't', 0xFF])]
     fn test_zip_path_normalized_invalid_utf8(#[case] input: &[u8]) {
         assert!(ZipFilePath::new(input).normalize().is_err());
+    }
+
+    #[test]
+    pub fn blank_zip_archive() {
+        let data = [80, 75, 5, 6];
+        let mut buf = vec![0u8; RECOMMENDED_BUFFER_SIZE];
+        let archive = ZipArchive::from_seekable(Cursor::new(data), &mut buf);
+        assert!(archive.is_err());
     }
 }
