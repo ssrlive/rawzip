@@ -95,40 +95,6 @@ static ZIP_TEST_CASES: LazyLock<Vec<ZipTestCase>> = LazyLock::new(|| {
             ],
             ..Default::default()
         },
-        // ZipTestCase {
-        //     name: "test-baddirsz.zip",
-        //     comment: Some(b"This is a zipfile comment."),
-        //     files: vec![
-        //         ZipTestFileEntry {
-        //             name: "test.txt",
-        //             expected_content: ExpectedContent::Content(
-        //                 b"This is a test text file.\n".to_vec(),
-        //             ),
-        //         },
-        //         ZipTestFileEntry {
-        //             name: "gophercolor16x16.png",
-        //             expected_content: ExpectedContent::File("gophercolor16x16.png"),
-        //         },
-        //     ],
-        //     ..Default::default()
-        // },
-        // ZipTestCase {
-        //     name: "test-badbase.zip",
-        //     comment: Some(b"This is a zipfile comment."),
-        //     files: vec![
-        //         ZipTestFileEntry {
-        //             name: "test.txt",
-        //             expected_content: ExpectedContent::Content(
-        //                 b"This is a test text file.\n".to_vec(),
-        //             ),
-        //         },
-        //         ZipTestFileEntry {
-        //             name: "gophercolor16x16.png",
-        //             expected_content: ExpectedContent::File("gophercolor16x16.png"),
-        //         },
-        //     ],
-        //     ..Default::default()
-        // },
         ZipTestCase {
             name: "symlink.zip",
             files: vec![ZipTestFileEntry {

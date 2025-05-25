@@ -544,6 +544,17 @@ impl EndOfCentralDirectory {
                 let size = u64::from(self.eocd.central_dir_size);
                 let offset = u64::from(self.eocd.central_dir_offset);
                 self.stream_pos.saturating_sub(size).saturating_sub(offset)
+
+                // In the case that the base_offset is calculated to be non-zero
+                // Go's zip reader will check if base_offset of zero would
+                // correspond to a valid directory header and if so, set it to
+                // zero anyways.
+                // https://github.com/golang/go/blob/c0e149b6b1aa2daca64c00804809bc2279e21eee/src/archive/zip/reader.go#L636
+                //
+                // Neither rc-zip or rust's zip crate can handle the file so we
+                // don't either
+                //
+                // See Go's test-badbase.zip and test-baddirsz.zip for test cases
             }
         }
     }
