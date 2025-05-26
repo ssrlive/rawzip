@@ -15,6 +15,7 @@ rust-version = "1.70"
 [dependencies]
 
 [dev-dependencies]
+paste = "1.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 flate2 = { version = "1.0.35" }
