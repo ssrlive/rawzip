@@ -16,6 +16,10 @@ pub(crate) const END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES: [u8; 4] =
 // https://github.com/zlib-ng/minizip-ng/blob/55db144e03027b43263e5ebcb599bf0878ba58de/mz_zip.c#L78
 const END_OF_CENTRAL_DIR_MAX_OFFSET: u64 = 1 << 20;
 
+/// Locates the End of Central Directory (EOCD) record in a ZIP archive.
+///
+/// The `ZipLocator` is responsible for finding the EOCD record, which is crucial
+/// for reading the contents of a ZIP file.
 pub struct ZipLocator {
     max_search_space: u64,
 }
@@ -27,13 +31,22 @@ impl Default for ZipLocator {
 }
 
 impl ZipLocator {
+    /// Creates a new `ZipLocator` with a default maximum search space of 1 MiB
     pub fn new() -> Self {
         ZipLocator {
             max_search_space: END_OF_CENTRAL_DIR_MAX_OFFSET,
         }
     }
 
-    /// The maximum number of bytes to search for the end of central directory signature
+    /// Sets the maximum number of bytes to search for the EOCD signature.
+    ///
+    /// The search is performed backwards from the end of the data source.
+    ///
+    /// ```rust
+    /// use rawzip::ZipLocator;
+    ///
+    /// let locator = ZipLocator::new().max_search_space(1024 * 64); // 64 KiB
+    /// ```
     pub fn max_search_space(mut self, max_search_space: u64) -> Self {
         self.max_search_space = max_search_space;
         self
@@ -67,6 +80,35 @@ impl ZipLocator {
         })
     }
 
+    /// Locates the EOCD record within a byte slice.
+    ///
+    /// On success, returns a `ZipSliceArchive` which allows reading the archive
+    /// directly from the slice. On failure, returns the original slice and an `Error`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rawzip::ZipLocator;
+    /// use std::fs;
+    /// use std::io::Read;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut file = fs::File::open("assets/readme.zip")?;
+    /// let mut data = Vec::new();
+    /// file.read_to_end(&mut data)?;
+    ///
+    /// let locator = ZipLocator::new();
+    /// match locator.locate_in_slice(&data) {
+    ///     Ok(archive) => {
+    ///         println!("Found EOCD in slice, archive has {} files.", archive.entries_hint());
+    ///     }
+    ///     Err((_data, e)) => {
+    ///         eprintln!("Failed to locate EOCD in slice: {:?}", e);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn locate_in_slice<T: AsRef<[u8]>>(
         &self,
         data: T,
@@ -77,6 +119,37 @@ impl ZipLocator {
         }
     }
 
+    /// Locates the EOCD record within a file.
+    ///
+    /// A mutable byte slice to use for reading data from the file. The buffer
+    /// should be large enough to hold the EOCD record and potentially parts of
+    /// the ZIP64 EOCD locator if present. A common size might be a few
+    /// kilobytes.
+    ///
+    /// On failure, returns the original file and an `Error`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rawzip::ZipLocator;
+    /// use std::fs::File;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let file = File::open("assets/readme.zip")?;
+    /// let mut buffer = vec![0; 1024 * 4]; // 4 KiB buffer
+    /// let locator = ZipLocator::new();
+    ///
+    /// match locator.locate_in_file(file, &mut buffer) {
+    ///     Ok(archive) => {
+    ///         println!("Found EOCD in file, archive has {} files.", archive.entries_hint());
+    ///     }
+    ///     Err((_file, e)) => {
+    ///         eprintln!("Failed to locate EOCD in file: {:?}", e);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn locate_in_file(
         &self,
         file: std::fs::File,
@@ -87,6 +160,8 @@ impl ZipLocator {
             .map_err(|(fr, e)| (fr.into_inner(), e))
     }
 
+    /// Locates the EOCD record in a reader that implements positioned io and
+    /// can seek (for determining length of data).
     pub fn locate_in_reader<R>(
         &self,
         mut reader: R,
