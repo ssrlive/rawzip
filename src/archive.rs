@@ -21,6 +21,26 @@ pub(crate) const CENTRAL_HEADER_SIGNATURE: u32 = 0x02014b50;
 /// > generally exceed 65,535 bytes.
 pub const RECOMMENDED_BUFFER_SIZE: usize = 1 << 16;
 
+/// Represents a Zip archive that operates on an in-memory data.
+///
+/// A [`ZipSliceArchive`] is more efficient and easier to use than a [`ZipArchive`],
+/// as there is no buffer management and memory copying involved.
+///
+/// # Examples
+///
+/// ```rust
+/// use rawzip::{ZipArchive, ZipSliceArchive, Error};
+///
+/// fn process_zip_slice(data: &[u8]) -> Result<(), Error> {
+///     let archive = ZipArchive::from_slice(data)?;
+///     println!("Found {} entries.", archive.entries_hint());
+///     for entry_result in archive.entries() {
+///         let entry = entry_result?;
+///         println!("File: {}", entry.file_safe_path()?);
+///     }
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ZipSliceArchive<T: AsRef<[u8]>> {
     pub(crate) data: T,
@@ -28,6 +48,7 @@ pub struct ZipSliceArchive<T: AsRef<[u8]>> {
 }
 
 impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
+    /// Returns an iterator over the entries in the central directory of the archive.
     pub fn entries(&self) -> ZipSliceEntries {
         let data = self.data.as_ref();
         let entry_data = &data[(self.eocd.offset() as usize).min(data.len())..];
@@ -185,9 +206,9 @@ pub struct ZipSliceEntries<'data> {
     base_offset: u64,
 }
 
-impl ZipSliceEntries<'_> {
+impl<'data> ZipSliceEntries<'data> {
     /// Yield the next zip file entry in the central directory if there is any
-    pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord>, Error> {
+    pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord<'data>>, Error> {
         let Ok(file_header) = ZipFileHeaderFixed::parse(self.entry_data) else {
             return Ok(None);
         };
@@ -201,6 +222,13 @@ impl ZipSliceEntries<'_> {
         entry.local_header_offset += self.base_offset;
         self.entry_data = entry_data;
         Ok(Some(entry))
+    }
+}
+impl<'data> Iterator for ZipSliceEntries<'data> {
+    type Item = Result<ZipFileHeaderRecord<'data>, Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_entry().transpose()
     }
 }
 
