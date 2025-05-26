@@ -129,6 +129,7 @@ impl From<std::fs::File> for FileReader {
 }
 
 /// A reader that is wrapped in a mutex to allow for concurrent reads.
+#[derive(Debug)]
 pub struct MutexReader<R>(std::sync::Mutex<R>);
 
 impl<R> MutexReader<R> {
