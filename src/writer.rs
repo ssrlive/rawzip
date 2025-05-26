@@ -5,7 +5,7 @@ use crate::{
 use std::io::{self, Write};
 
 #[derive(Debug)]
-pub struct CountWriter<W> {
+struct CountWriter<W> {
     writer: W,
     count: u64,
 }
@@ -32,16 +32,19 @@ impl<W: Write> Write for CountWriter<W> {
     }
 }
 
+/// Builds a `ZipArchiveWriter`.
 #[derive(Debug)]
 pub struct ZipArchiveWriterBuilder {
     count: u64,
 }
 
 impl ZipArchiveWriterBuilder {
+    /// Creates a new `ZipArchiveWriterBuilder`.
     pub fn new() -> Self {
         ZipArchiveWriterBuilder { count: 0 }
     }
 
+    /// Builds a `ZipArchiveWriter` that writes to `writer`.
     pub fn build<W>(&self, writer: W) -> ZipArchiveWriter<W> {
         ZipArchiveWriter {
             writer: CountWriter::new(writer, self.count),
@@ -56,6 +59,8 @@ impl Default for ZipArchiveWriterBuilder {
     }
 }
 
+/// Create a new Zip archive.
+///
 /// ```rust
 /// use std::io::Write;
 ///
@@ -75,12 +80,15 @@ pub struct ZipArchiveWriter<W> {
 }
 
 impl ZipArchiveWriter<()> {
+    /// Creates a `ZipArchiveWriterBuilder` that starts writing at `offset`.
+    /// This is useful when the ZIP archive is appended to an existing file.
     pub fn at_offset(offset: u64) -> ZipArchiveWriterBuilder {
         ZipArchiveWriterBuilder { count: offset }
     }
 }
 
 impl<W> ZipArchiveWriter<W> {
+    /// Creates a new `ZipArchiveWriter` that writes to `writer`.
     pub fn new(writer: W) -> Self {
         ZipArchiveWriterBuilder::new().build(writer)
     }
@@ -90,6 +98,9 @@ impl<W> ZipArchiveWriter<W>
 where
     W: Write,
 {
+    /// Adds a new directory to the archive.
+    ///
+    /// The name of the directory must end with a `/`.
     pub fn new_dir(&mut self, name: &str) -> Result<(), Error> {
         let file_path = ZipFilePath::new(name.as_bytes());
         if !file_path.is_dir() {
@@ -139,6 +150,8 @@ where
         Ok(())
     }
 
+    /// Adds a new file to the archive and returns a writer for the file's content,
+    /// which should be passed to a compressor.
     pub fn new_file<'a>(
         &'a mut self,
         name: &str,
@@ -183,6 +196,16 @@ where
         ))
     }
 
+    /// Finishes writing the archive and returns the underlying writer.
+    ///
+    /// This writes the central directory and the end of central directory
+    /// record.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if there are too many files or the central directory is
+    /// too large for the standard ZIP format. Zip64 can be used for larger
+    /// archives, but is not supported yet.
     pub fn finish(mut self) -> Result<W, Error>
     where
         W: Write,
@@ -298,7 +321,12 @@ where
     }
 }
 
-/// A writer that tracks the number of bytes written in and out.
+/// A writer for a file in a ZIP archive.
+///
+/// This writer is created by `ZipArchiveWriter::new_file`.
+/// Data written to this writer is compressed and written to the underlying archive.
+///
+/// After writing all data, call `finish` to complete the entry.
 pub struct ZipEntryWriter<'a, W> {
     inner: &'a mut ZipArchiveWriter<W>,
     compressed_bytes: u64,
@@ -329,6 +357,9 @@ impl<'a, W> ZipEntryWriter<'a, W> {
         self.compressed_bytes
     }
 
+    /// Finishes writing the file entry.
+    ///
+    /// This writes the data descriptor if necessary and adds the file entry to the central directory.
     pub fn finish(self, mut output: DataDescriptorOutput) -> Result<u64, Error>
     where
         W: Write,
@@ -399,13 +430,13 @@ where
     }
 }
 
-/// A writer for the uncompressed data
+/// A writer for the uncompressed data of a Zip file entry.
 ///
 /// This writer will keep track of the data necessary to write the data
 /// descriptor (ie: number of bytes written and the CRC32 checksum).
 ///
-/// Once all the data has been written, invoke the `finish` method receive the
-/// data descriptor.
+/// Once all the data has been written, invoke the `finish` method to receive the
+/// `DataDescriptorOutput` necessary to finalize the entry.
 #[derive(Debug)]
 pub struct ZipDataWriter<W> {
     inner: W,
@@ -414,6 +445,7 @@ pub struct ZipDataWriter<W> {
 }
 
 impl<W> ZipDataWriter<W> {
+    /// Creates a new `ZipDataWriter` that writes to an underlying writer.
     pub fn new(inner: W) -> Self {
         ZipDataWriter {
             inner,
@@ -422,7 +454,7 @@ impl<W> ZipDataWriter<W> {
         }
     }
 
-    /// Gets a mutable reference to the underlying writer
+    /// Gets a mutable reference to the underlying writer.
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.inner
     }
@@ -433,6 +465,9 @@ impl<W> ZipDataWriter<W> {
     /// The writer is returned to facilitate situations where the underlying
     /// compressor needs to be notified that no more data will be written so it
     /// can write any sort of necesssary epilogue (think zstd).
+    ///
+    /// The `DataDescriptorOutput` contains the CRC32 checksum and uncompressed size,
+    /// which is needed by `ZipEntryWriter::finish`.
     pub fn finish(mut self) -> Result<(W, DataDescriptorOutput), Error>
     where
         W: Write,
@@ -464,6 +499,7 @@ where
     }
 }
 
+/// Contains information written in the data descriptor after the file data.
 #[derive(Debug, Clone)]
 pub struct DataDescriptorOutput {
     crc: u32,
@@ -472,10 +508,12 @@ pub struct DataDescriptorOutput {
 }
 
 impl DataDescriptorOutput {
+    /// Returns the CRC32 checksum of the uncompressed data.
     pub fn crc(&self) -> u32 {
         self.crc
     }
 
+    /// Returns the uncompressed size of the data.
     pub fn uncompressed_size(&self) -> u64 {
         self.uncompressed_size
     }
@@ -491,6 +529,9 @@ struct FileHeader {
     crc: u32,
 }
 
+/// Options for creating a new ZIP file entry.
+///
+/// The default compression method is `CompressionMethod::Store` (no compression).
 #[derive(Debug, Clone, Copy)]
 pub struct ZipEntryOptions {
     compression_method: CompressionMethod,
@@ -505,6 +546,7 @@ impl Default for ZipEntryOptions {
 }
 
 impl ZipEntryOptions {
+    /// Sets the compression method for the new file entry.
     pub fn compression_method(mut self, compression_method: CompressionMethod) -> Self {
         self.compression_method = compression_method;
         self

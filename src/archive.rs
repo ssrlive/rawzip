@@ -65,11 +65,17 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
         self.data.as_ref()
     }
 
+    /// Returns a hint for the total number of entries in the archive.
+    ///
+    /// This value is read from the End of Central Directory record.
     pub fn entries_hint(&self) -> u64 {
         self.eocd.entries()
     }
 
-    /// the start of the zip file proper.
+    /// Returns the offset of the start of the zip file data.
+    ///
+    /// This is typically 0, but can be non-zero if the zip archive
+    /// is embedded within a larger file (e.g., a self-extracting archive).
     pub fn base_offset(&self) -> u64 {
         self.eocd.base_offset()
     }
@@ -83,10 +89,10 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
         ZipStr::new(&remaining[..(comment_len).min(remaining.len())])
     }
 
-    /// Convert the slice archive into a general archive.
+    /// Converts the [`ZipSliceArchive`] into a general [`ZipArchive`].
     ///
-    /// This is useful for downstream libraries who don't want to expose a bunch
-    /// of methods and structs specialized for byte slices.
+    /// This is useful for unifying code that might handle both slice-based
+    /// and reader-based archives.
     pub fn into_reader(self) -> ZipArchive<T> {
         let comment = self.comment().into_owned();
         ZipArchive {
@@ -96,6 +102,14 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
         }
     }
 
+    /// Retrieves a specific entry from the archive by its [`ZipArchiveEntryWayfinder`].
+    ///
+    /// A wayfinder can be obtained when iterating through the central directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error` if the entry cannot be found or read, or if the
+    /// archive is malformed.
     pub fn get_entry(&self, entry: ZipArchiveEntryWayfinder) -> Result<ZipSliceEntry, Error> {
         let data = self.data.as_ref();
         let header = &data[(entry.local_header_offset as usize).min(data.len())..];
@@ -129,6 +143,9 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
     }
 }
 
+/// Represents a single entry (file or directory) within a `ZipSliceArchive`.
+///
+/// It provides access to the raw compressed data of the entry.
 #[derive(Debug, Clone)]
 pub struct ZipSliceEntry<'a> {
     data: &'a [u8],
@@ -136,15 +153,16 @@ pub struct ZipSliceEntry<'a> {
 }
 
 impl<'a> ZipSliceEntry<'a> {
-    /// The raw, compressed data of the entry.
+    /// Returns the raw, compressed data of the entry as a byte slice.
     pub fn data(&self) -> &'a [u8] {
         self.data
     }
 
     /// Returns a verifier for the CRC and uncompressed size of the entry.
     ///
-    /// Useful when it's more practical to oneshot decompress the data, otherwise
-    /// use [`verifying_reader`] to stream decompression and verification.
+    /// Useful when it's more practical to oneshot decompress the data,
+    /// otherwise use [`ZipSliceEntry::verifying_reader`] to stream
+    /// decompression and verification.
     pub fn claim_verifier(&self) -> ZipVerification {
         self.verifier
     }
@@ -164,6 +182,7 @@ impl<'a> ZipSliceEntry<'a> {
     }
 }
 
+/// Verifies the wrapped reader returns the expected CRC and uncompressed size
 #[derive(Debug, Clone)]
 pub struct ZipSliceVerifier<D> {
     reader: D,
@@ -173,6 +192,7 @@ pub struct ZipSliceVerifier<D> {
 }
 
 impl<D> ZipSliceVerifier<D> {
+    /// Consumes the `ZipSliceVerifier`, returning the underlying reader.
     pub fn into_inner(self) -> D {
         self.reader
     }
@@ -200,6 +220,9 @@ where
     }
 }
 
+/// An iterator over the central directory file header records.
+///
+/// Created from [`ZipSliceArchive::entries`].
 #[derive(Debug, Clone)]
 pub struct ZipSliceEntries<'data> {
     entry_data: &'data [u8],
@@ -232,6 +255,24 @@ impl<'data> Iterator for ZipSliceEntries<'data> {
     }
 }
 
+/// The main entrypoint for reading a Zip archive.
+///
+/// It can be created from a slice, a file, or any `Read + Seek` source.
+///
+/// # Examples
+///
+/// Creating from a file:
+///
+/// ```rust
+/// # use rawzip::{ZipArchive, Error, RECOMMENDED_BUFFER_SIZE};
+/// # use std::fs::File;
+/// # use std::io;
+/// fn example_from_file(file: File) -> Result<(), Error> {
+///     let mut buffer = vec![0u8; RECOMMENDED_BUFFER_SIZE];
+///     let archive = ZipArchive::from_file(file, &mut buffer)?;
+///     Ok(())
+/// }
+/// ```
 #[derive(Debug, Clone)]
 pub struct ZipArchive<R> {
     pub(crate) reader: R,
@@ -240,14 +281,21 @@ pub struct ZipArchive<R> {
 }
 
 impl ZipArchive<()> {
+    /// Creates a [`ZipLocator`] configured with a maximum search space for the
+    /// End of Central Directory Record (EOCD).
     pub fn with_max_search_space(max_search_space: u64) -> ZipLocator {
         ZipLocator::new().max_search_space(max_search_space)
     }
 
+    /// Parses an archive from in-memory data.
     pub fn from_slice<T: AsRef<[u8]>>(data: T) -> Result<ZipSliceArchive<T>, Error> {
         ZipLocator::new().locate_in_slice(data).map_err(|(_, e)| e)
     }
 
+    /// Parses an archive from a file by reading the End of Central Directory.
+    ///
+    /// A buffer is required to read parts of the file.
+    /// [`RECOMMENDED_BUFFER_SIZE`] can be used to construct this buffer.
     pub fn from_file(
         file: std::fs::File,
         buffer: &mut [u8],
@@ -257,6 +305,21 @@ impl ZipArchive<()> {
             .map_err(|(_, e)| e)
     }
 
+    /// Parses an archive from a seekable reader.
+    ///
+    /// Prefer [`ZipArchive::from_file`] and [`ZipArchive::from_slice`] when
+    /// possible, as they are more efficient due to not wrapping the underlying
+    /// reader in a mutex to support positioned io.
+    ///
+    /// ```rust
+    /// # use rawzip::{ZipArchive, Error, RECOMMENDED_BUFFER_SIZE, ZipFileHeaderRecord};
+    /// # use std::io::Cursor;
+    /// fn example(zip_data: &[u8]) -> Result<(), Error> {
+    ///     let mut buffer = vec![0u8; RECOMMENDED_BUFFER_SIZE];
+    ///     let archive = ZipArchive::from_seekable(Cursor::new(zip_data), &mut buffer)?;
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn from_seekable<R>(
         reader: R,
         buffer: &mut [u8],
@@ -272,13 +335,33 @@ impl ZipArchive<()> {
 }
 
 impl<R> ZipArchive<R> {
+    /// Returns a reference to the underlying reader.
     pub fn get_ref(&self) -> &R {
         &self.reader
     }
 
-    /// Function will seek to and read the central directory, the function
-    /// accepts a buffer will be read into and will return borrowed data as long
-    /// as the next entry can be read
+    /// Returns a lending iterator over the entries in the central directory of
+    /// the archive.
+    ///
+    /// Requires a mutable buffer to read directory entries from the underlying
+    /// reader.
+    ///
+    /// ```rust
+    /// # use rawzip::{ZipArchive, Error, RECOMMENDED_BUFFER_SIZE, ZipFileHeaderRecord};
+    /// # use std::fs::File;
+    /// fn example(file: File) -> Result<(), Error> {
+    ///     let mut buffer = vec![0u8; RECOMMENDED_BUFFER_SIZE];
+    ///     let archive = ZipArchive::from_file(file, &mut buffer)?;
+    ///     let entries_hint = archive.entries_hint();
+    ///     let mut actual_entries = 0;
+    ///     let mut entries_iterator = archive.entries(&mut buffer);
+    ///     while let Some(_) = entries_iterator.next_entry()? {
+    ///         actual_entries += 1;
+    ///     }
+    ///     println!("Found {} entries (hint: {})", actual_entries, entries_hint);
+    ///     Ok(())
+    /// }
+    /// ```
     pub fn entries<'archive, 'buf>(
         &'archive self,
         buffer: &'buf mut [u8],
@@ -294,15 +377,22 @@ impl<R> ZipArchive<R> {
         }
     }
 
+    /// Returns a hint for the total number of entries in the archive.
+    ///
+    /// This value is read from the End of Central Directory record.
     pub fn entries_hint(&self) -> u64 {
         self.eocd.entries()
     }
 
+    /// Returns the comment of the zip archive, if any.
     pub fn comment(&self) -> ZipStr {
         self.comment.as_str()
     }
 
-    /// the start of the zip file proper.
+    /// Returns the offset of the start of the zip file data.
+    ///
+    /// This is typically 0, but can be non-zero if the zip archive
+    /// is embedded within a larger file (e.g., a self-extracting archive).
     pub fn base_offset(&self) -> u64 {
         self.eocd.base_offset()
     }
@@ -312,6 +402,7 @@ impl<R> ZipArchive<R>
 where
     R: ReaderAt,
 {
+    /// Retrieves a specific entry from the archive by a wayfinder.
     pub fn get_entry(&self, entry: ZipArchiveEntryWayfinder) -> Result<ZipEntry<'_, R>, Error> {
         let mut buffer = [0u8; ZipLocalFileHeaderFixed::SIZE];
         self.reader
@@ -336,6 +427,7 @@ where
     }
 }
 
+/// Represents a single entry (file or directory) within a [`ZipArchive`]
 #[derive(Debug, Clone)]
 pub struct ZipEntry<'archive, R> {
     archive: &'archive ZipArchive<R>,
@@ -348,6 +440,7 @@ impl<'archive, R> ZipEntry<'archive, R>
 where
     R: ReaderAt,
 {
+    /// Returns a [`ZipReader`] for reading the compressed data of this entry.
     pub fn reader(&self) -> ZipReader<'archive, R> {
         ZipReader {
             archive: self.archive,
@@ -357,6 +450,8 @@ where
         }
     }
 
+    /// Returns a reader that wraps a decompressor and verify the size and CRC
+    /// of the decompressed data once finished.
     pub fn verifying_reader<D>(&self, reader: D) -> ZipVerifier<'archive, D, R>
     where
         D: std::io::Read,
@@ -372,6 +467,9 @@ where
     }
 }
 
+/// Holds the expected CRC32 checksum and uncompressed size for a Zip entry.
+///
+/// This struct is used to verify the integrity of decompressed data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ZipVerification {
     pub crc: u32,
@@ -379,12 +477,12 @@ pub struct ZipVerification {
 }
 
 impl ZipVerification {
-    /// The CRC of the entry.
+    /// Returns the expected CRC32 checksum.
     pub fn crc(&self) -> u32 {
         self.crc
     }
 
-    /// The uncompressed size of the entry.
+    /// Returns the expected uncompressed size.
     pub fn size(&self) -> u64 {
         self.uncompressed_size
     }
@@ -425,6 +523,7 @@ pub struct ZipVerifier<'archive, Decompressor, ReaderAt> {
 }
 
 impl<Decompressor, ReaderAt> ZipVerifier<'_, Decompressor, ReaderAt> {
+    /// Consumes the [`ZipVerifier`], returning the underlying decompressor.
     pub fn into_inner(self) -> Decompressor {
         self.reader
     }
@@ -465,6 +564,7 @@ where
     }
 }
 
+/// A reader for a Zip entry's compressed data.
 #[derive(Debug, Clone)]
 pub struct ZipReader<'archive, R> {
     archive: &'archive ZipArchive<R>,
@@ -480,9 +580,9 @@ where
     /// Returns an object that can be used to verify the size and checksum of
     /// inflated data
     ///
-    /// This function consumes self to communicate that the reader should be
-    /// done reading, as any potential data descriptor is found after the
-    /// data.
+    /// Consumes the reader, so this should be called after all data has been read from the entry.
+    ///
+    /// The function will read the data descriptor if one is expected to exist.
     pub fn claim_verifier(self) -> Result<ZipVerification, Error> {
         let expected_size = self.entry.uncompressed_size_hint();
 
@@ -607,6 +707,7 @@ impl EndOfCentralDirectory {
     }
 }
 
+/// A lending iterator over file header records in a [`ZipArchive`].
 #[derive(Debug)]
 pub struct ZipEntries<'archive, 'buf, R> {
     buffer: &'buf mut [u8],
@@ -623,6 +724,9 @@ where
     R: ReaderAt,
 {
     /// Yield the next zip file entry in the central directory if there is any
+    ///
+    /// This method reads from the underlying archive reader into the provided
+    /// buffer to parse entry headers.
     pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord>, Error> {
         let file_header = loop {
             let data = &self.buffer[self.pos..self.end];
@@ -769,14 +873,17 @@ impl Zip64EndOfCentralDirectoryRecord {
     }
 }
 
+/// A numeric identifier for a compression method used in a Zip archive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompressionMethodId(u16);
 
 impl CompressionMethodId {
+    /// Returns the raw `u16` value of the compression method ID.
     pub fn as_u16(&self) -> u16 {
         self.0
     }
 
+    /// Converts the numeric ID to a `CompressionMethod` enum.
     pub fn as_method(&self) -> CompressionMethod {
         match self.0 {
             0 => CompressionMethod::Store,
@@ -838,6 +945,7 @@ pub enum CompressionMethod {
 }
 
 impl CompressionMethod {
+    /// Return the numeric id of this compression method.
     pub fn as_id(&self) -> CompressionMethodId {
         let value = match self {
             CompressionMethod::Store => 0,
@@ -874,39 +982,53 @@ impl From<u16> for CompressionMethod {
     }
 }
 
-/// Textual data borrowed from Zip archive
+/// A borrowed data from a Zip archive, typically for comments or non-path text.
+///
+/// Zip archives may contain text that is not strictly UTF-8. This type
+/// represents such text as a byte slice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ZipStr<'a>(&'a [u8]);
 
 impl<'a> ZipStr<'a> {
+    /// Creates a new `ZipStr` from a byte slice.
     pub fn new(data: &'a [u8]) -> Self {
         Self(data)
     }
 
+    /// Returns the underlying byte slice.
     pub fn as_bytes(&self) -> &'a [u8] {
         self.0
     }
 
+    /// Converts the borrowed `ZipStr` into an owned `ZipString` by cloning the
+    /// data.
     pub fn into_owned(&self) -> ZipString {
         ZipString::new(self.0.to_vec())
     }
 }
 
-/// Textual data from a Zip archive
+/// An owned string (`Vec<u8>`) from a Zip archive, typically for comments or non-path text.
+///
+/// Similar to `ZipStr`, but owns its data.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ZipString(Vec<u8>);
 
 impl ZipString {
+    /// Creates a new `ZipString` from a vector of bytes.
     pub fn new(data: Vec<u8>) -> Self {
         Self(data)
     }
 
+    /// Returns a borrowed `ZipStr` view of this `ZipString`.
     pub fn as_str(&self) -> ZipStr {
         ZipStr::new(self.0.as_slice())
     }
 }
 
-/// Represents a path within a Zip archive.
+/// Represents a file path within a Zip archive, as a borrowed byte slice.
+///
+/// File paths in Zip archives are not guaranteed to be UTF-8, and may contain
+/// relative paths that try and escape the zip or absolute paths.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ZipFilePath<'a>(ZipStr<'a>);
 
@@ -974,14 +1096,19 @@ impl<'a> ZipFilePath<'a> {
         self.0.as_bytes().last() == Some(&b'/')
     }
 
-    /// Represents a path within a Zip archive.
+    /// Normalizes the Zip file path.
     ///
-    /// The path normalization follows these rules:
-    /// - Interpret the file path as UTF-8
-    /// - Converts backslashes to forward slashes
-    /// - Removes redundant slashes
-    /// - Resolves relative path components (`..` and `.`)
-    /// - Strips leading slashes and parent directory references that would escape the root
+    /// The normalization process includes:
+    /// - Attempting to interpret the path as UTF-8.
+    /// - Replacing backslashes (`\`) with forward slashes (`/`).
+    /// - Removing redundant slashes (e.g., `//`).
+    /// - Resolving relative path components (`.` and `..`).
+    /// - Stripping leading slashes and parent directory traversals that would
+    ///   escape the archive's root (e.g., `/foo` becomes `foo`, `../foo`
+    ///   becomes `foo`).
+    ///
+    /// In the case where no allocation needs to occur when normalizing, an
+    /// original reference to the data is returned.
     ///
     /// # Examples
     ///
@@ -1035,7 +1162,7 @@ impl<'a> ZipFilePath<'a> {
     ///
     /// # Errors
     ///
-    /// - [`Error::Utf8`] if the file path is not valid UTF-8.
+    /// - if the file path is not valid UTF-8.
     ///
     /// [Note that zip file names aren't always UTF-8][1]
     ///
@@ -1066,9 +1193,13 @@ impl<'a> ZipFilePath<'a> {
     }
 }
 
+/// Represents a record from the Zip archive's central directory for a single
+/// file
 ///
+/// This contains metadata about the file. If interested in navigating to the
+/// file contents, use `[ZipFileHeaderRecord::wayfinder]`.
 ///
-/// 4.3.12
+/// Reference 4.3.12 in the zip specification
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct ZipFileHeaderRecord<'a> {
@@ -1202,8 +1333,8 @@ impl<'a> ZipFileHeaderRecord<'a> {
         self.file_name.is_dir()
     }
 
-    /// Describes if the file has a data descriptor that follows the compressed
-    /// data
+    /// Returns true if the entry has a data descriptor that follows its
+    /// compressed data.
     ///
     /// From the spec (4.3.9.1):
     ///
@@ -1295,7 +1426,7 @@ impl ZipArchiveEntryWayfinder {
 }
 
 #[derive(Debug, Clone)]
-pub struct ZipLocalFileHeaderFixed {
+pub(crate) struct ZipLocalFileHeaderFixed {
     pub(crate) signature: u32,
     pub(crate) version_needed: u16,
     pub(crate) flags: u16,
