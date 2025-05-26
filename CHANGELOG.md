@@ -1,3 +1,15 @@
+## v0.2.0 - May 26th, 2025
+
+- Expose `ErrorKind` as part of public API
+- Impl Iterator for ZipSliceEntries
+- Remove accidental types as part of public API
+- Derive `Debug` for `MutexReader`
+- Fix slice archive panic on truncated eocd entry
+- Fix inconsistent behavior for truncated eocd64 between reader and slice archives
+- Fix inconsistent behavior for truncated zip comments between reader and slice archives
+- Fix zip archive reader reading zeros instead of EOF
+- Fix zip archive reader comment detection
+
 ## v0.1.0 - March 1th, 2025
 
 The v0.1.0 release signifies that I'm satisfied with overall APIs for reading and writing. There are still plenty of missing aspects that would be useful for a general purpose zip library reader (like timestamps, permissions, etc) as well as writer (zip64), but these can be incorporated onto the current foundations as time and use cases permits.
