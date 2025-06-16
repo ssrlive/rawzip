@@ -15,8 +15,9 @@ rust-version = "1.70"
 [dependencies]
 
 [dev-dependencies]
+flate2 = { version = "1.0.35" }
+jiff = { version = "0.2.15", default-features = false }
 paste = "1.0"
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
-flate2 = { version = "1.0.35" }
 rstest = "0.24.0"
