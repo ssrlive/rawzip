@@ -1,5 +1,5 @@
 use quickcheck_macros::quickcheck;
-use rawzip::{Error, ErrorKind};
+use rawzip::{Error, ErrorKind, TimeZone};
 use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
@@ -32,6 +32,7 @@ struct ZipTestCase {
 struct ZipTestFileEntry {
     name: &'static str,
     expected_content: ExpectedContent,
+    expected_datetime: Option<rawzip::ZipDateTime>,
 }
 
 #[derive(Debug)]
@@ -50,10 +51,30 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "test.txt",
                 expected_content: ExpectedContent::Content(b"This is a test text file.\n".to_vec(),),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2010,
+                    9,
+                    5,
+                    2,
+                    12,
+                    1,
+                    0,
+                    TimeZone::Utc
+                )), // 2010-09-05 02:12:01 UTC
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
                 expected_content: ExpectedContent::File("gophercolor16x16.png"),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2010,
+                    9,
+                    5,
+                    5,
+                    52,
+                    58,
+                    0,
+                    TimeZone::Utc
+                )), // 2010-09-05 05:52:58 UTC
             },
         ],
         ..Default::default()
@@ -78,10 +99,30 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "test.txt",
                 expected_content: ExpectedContent::Content(b"This is a test text file.\n".to_vec(),),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2010,
+                    9,
+                    5,
+                    2,
+                    12,
+                    1,
+                    0,
+                    TimeZone::Utc
+                )), // 2010-09-05 02:12:01 UTC
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
                 expected_content: ExpectedContent::File("gophercolor16x16.png"),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2010,
+                    9,
+                    5,
+                    5,
+                    52,
+                    58,
+                    0,
+                    TimeZone::Utc
+                )), // 2010-09-05 05:52:58 UTC
             },
         ],
         ..Default::default()
@@ -97,10 +138,30 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "test.txt",
                 expected_content: ExpectedContent::Content(b"This is a test text file.\n".to_vec(),),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2010,
+                    9,
+                    5,
+                    2,
+                    12,
+                    1,
+                    0,
+                    TimeZone::Utc
+                )), // 2010-09-05 02:12:01 UTC
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
                 expected_content: ExpectedContent::File("gophercolor16x16.png"),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2010,
+                    9,
+                    5,
+                    5,
+                    52,
+                    58,
+                    0,
+                    TimeZone::Utc
+                )), // 2010-09-05 05:52:58 UTC
             },
         ],
         ..Default::default()
@@ -114,6 +175,16 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "symlink",
             expected_content: ExpectedContent::Content(b"../target".to_vec()),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2012,
+                2,
+                3,
+                21,
+                56,
+                48,
+                0,
+                TimeZone::Utc
+            )), // 2012-02-03 21:56:48 (UTC from archive)
         }],
         ..Default::default()
     }
@@ -136,18 +207,58 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "hello",
                 expected_content: ExpectedContent::Content(b"world \r\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    4,
+                    24,
+                    0,
+                    TimeZone::Local
+                )),
             },
             ZipTestFileEntry {
                 name: "dir/bar",
                 expected_content: ExpectedContent::Content(b"foo \r\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    4,
+                    50,
+                    0,
+                    TimeZone::Local
+                )),
             },
             ZipTestFileEntry {
                 name: "dir/empty/",
                 expected_content: ExpectedContent::Content(b"".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    8,
+                    6,
+                    0,
+                    TimeZone::Local
+                )),
             },
             ZipTestFileEntry {
                 name: "readonly",
                 expected_content: ExpectedContent::Content(b"important \r\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    6,
+                    8,
+                    0,
+                    TimeZone::Local
+                )),
             },
         ],
         ..Default::default()
@@ -163,18 +274,58 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "hello",
                 expected_content: ExpectedContent::Content(b"world \r\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    4,
+                    24,
+                    0,
+                    TimeZone::Utc
+                )), // 2011-12-08 10:04:24 UTC (but stored as local time)
             },
             ZipTestFileEntry {
                 name: "dir/bar",
                 expected_content: ExpectedContent::Content(b"foo \r\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    4,
+                    50,
+                    0,
+                    TimeZone::Utc
+                )), // 2011-12-08 10:04:50 UTC (but stored as local time)
             },
             ZipTestFileEntry {
                 name: "dir/empty/",
                 expected_content: ExpectedContent::Content(b"".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    8,
+                    6,
+                    0,
+                    TimeZone::Utc
+                )), // 2011-12-08 10:08:06 UTC (but stored as local time)
             },
             ZipTestFileEntry {
                 name: "readonly",
                 expected_content: ExpectedContent::Content(b"important \r\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2011,
+                    12,
+                    8,
+                    10,
+                    6,
+                    8,
+                    0,
+                    TimeZone::Utc
+                )), // 2011-12-08 10:06:08 UTC (but stored as local time)
             },
         ],
         ..Default::default()
@@ -191,10 +342,30 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "foo.txt",
                 expected_content: ExpectedContent::Content(b"foo\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    1980,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    TimeZone::Local
+                )), // DOS timestamp 0x0000 0x0000 normalized to 1980-01-01 00:00:00
             },
             ZipTestFileEntry {
                 name: "bar.txt",
                 expected_content: ExpectedContent::Content(b"bar\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    1980,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    TimeZone::Local
+                )), // DOS timestamp 0x0000 0x0000 normalized to 1980-01-01 00:00:00
             },
         ],
         ..Default::default()
@@ -209,10 +380,30 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "foo.txt",
                 expected_content: ExpectedContent::Content(b"foo\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2012,
+                    3,
+                    9,
+                    0,
+                    59,
+                    10,
+                    0,
+                    TimeZone::Utc
+                )), // 2012-03-09 00:59:10 (UTC from archive)
             },
             ZipTestFileEntry {
                 name: "bar.txt",
                 expected_content: ExpectedContent::Content(b"bar\n".to_vec()),
+                expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                    2012,
+                    3,
+                    9,
+                    0,
+                    59,
+                    12,
+                    0,
+                    TimeZone::Utc
+                )), // 2012-03-09 00:59:12 (UTC from archive)
             },
         ],
         ..Default::default()
@@ -228,6 +419,170 @@ zip_test_case!(
             expected_content: ExpectedContent::Content(
                 b"This small file is in ZIP64 format.\n".to_vec(),
             ),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2012,
+                8,
+                10,
+                18,
+                33,
+                32,
+                0,
+                TimeZone::Utc
+            )), // 2012-08-10 18:33:32 (UTC from archive)
+        }],
+        ..Default::default()
+    }
+);
+
+zip_test_case!(
+    "time_7zip",
+    ZipTestCase {
+        name: "time-7zip.zip",
+        files: vec![ZipTestFileEntry {
+            name: "test.txt",
+            expected_content: ExpectedContent::Content(vec![]),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2017,
+                11,
+                1,
+                4,
+                11,
+                57,
+                244817900,
+                TimeZone::Utc
+            )), // 2017-10-31 21:11:57.244817900 (-7 hours) = 2017-11-01 04:11:57.244817900 UTC
+        }],
+        ..Default::default()
+    }
+);
+
+zip_test_case!(
+    "time_infozip",
+    ZipTestCase {
+        name: "time-infozip.zip",
+        files: vec![ZipTestFileEntry {
+            name: "test.txt",
+            expected_content: ExpectedContent::Content(vec![]),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2017,
+                11,
+                1,
+                4,
+                11,
+                57,
+                0,
+                TimeZone::Utc
+            )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
+        }],
+        ..Default::default()
+    }
+);
+
+zip_test_case!(
+    "time_osx",
+    ZipTestCase {
+        name: "time-osx.zip",
+        files: vec![ZipTestFileEntry {
+            name: "test.txt",
+            expected_content: ExpectedContent::Content(vec![]),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2017,
+                11,
+                1,
+                4,
+                11,
+                57,
+                0,
+                TimeZone::Utc
+            )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
+        }],
+        ..Default::default()
+    }
+);
+
+zip_test_case!(
+    "time_win7",
+    ZipTestCase {
+        name: "time-win7.zip",
+        files: vec![ZipTestFileEntry {
+            name: "test.txt",
+            expected_content: ExpectedContent::Content(vec![]),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2017,
+                10,
+                31,
+                21,
+                11,
+                58,
+                0,
+                TimeZone::Local
+            )), // 2017-10-31 21:11:58.000 (DOS local time)
+        }],
+        ..Default::default()
+    }
+);
+
+zip_test_case!(
+    "time_winrar",
+    ZipTestCase {
+        name: "time-winrar.zip",
+        files: vec![ZipTestFileEntry {
+            name: "test.txt",
+            expected_content: ExpectedContent::Content(vec![]),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2017,
+                11,
+                1,
+                4,
+                11,
+                57,
+                244817900,
+                TimeZone::Utc
+            )), // 2017-10-31 21:11:57.244817900 (-7 hours) = 2017-11-01 04:11:57.244817900 UTC
+        }],
+        ..Default::default()
+    }
+);
+
+zip_test_case!(
+    "time_winzip",
+    ZipTestCase {
+        name: "time-winzip.zip",
+        files: vec![ZipTestFileEntry {
+            name: "test.txt",
+            expected_content: ExpectedContent::Content(vec![]),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2017,
+                11,
+                1,
+                4,
+                11,
+                57,
+                244000000,
+                TimeZone::Utc
+            )), // 2017-10-31 21:11:57.244000000 (-7 hours) = 2017-11-01 04:11:57.244000000 UTC
+        }],
+        ..Default::default()
+    }
+);
+
+zip_test_case!(
+    "time_go",
+    ZipTestCase {
+        name: "time-go.zip",
+        files: vec![ZipTestFileEntry {
+            name: "test.txt",
+            expected_content: ExpectedContent::Content(vec![]),
+            expected_datetime: Some(rawzip::ZipDateTime::from_components(
+                2017,
+                11,
+                1,
+                4,
+                11,
+                57,
+                0,
+                TimeZone::Utc
+            )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
         }],
         ..Default::default()
     }
@@ -260,6 +615,15 @@ fn process_archive_files<R: rawzip::ReaderAt>(
                     if file_name == expected_file.name {
                         actual_files_found += 1;
                         found_file = true;
+
+                        if let Some(expected_dt) = &expected_file.expected_datetime {
+                            let actual_dt = entry.last_modified();
+                            assert_eq!(
+                                &actual_dt, expected_dt,
+                                "Datetime mismatch for file {}: expected {}, got {}",
+                                expected_file.name, expected_dt, actual_dt
+                            );
+                        }
 
                         let position = entry.wayfinder();
                         let ent = archive.get_entry(position)?;
@@ -352,6 +716,15 @@ fn process_slice_archive_files(
                         actual_files_found += 1;
                         found_file = true;
 
+                        if let Some(expected_dt) = &expected_file.expected_datetime {
+                            let actual_dt = entry.last_modified();
+                            assert_eq!(
+                                &actual_dt, expected_dt,
+                                "Datetime mismatch for file {}: expected {}, got {}",
+                                expected_file.name, expected_dt, actual_dt
+                            );
+                        }
+
                         let position = entry.wayfinder();
 
                         let ent = archive.get_entry(position)?;
@@ -418,7 +791,7 @@ fn process_slice_archive_files(
 }
 
 fn run_zip_test_case_reader(case: &ZipTestCase) {
-    let file_path = Path::new("assets").join(&case.name);
+    let file_path = Path::new("assets").join(case.name);
     let f = File::open(file_path).unwrap();
 
     fn processor(f: File, case: &ZipTestCase) -> Result<(), Error> {
@@ -453,7 +826,7 @@ fn run_zip_test_case_reader(case: &ZipTestCase) {
 
 fn run_zip_test_case_slice(case: &ZipTestCase) {
     fn processor(case: &ZipTestCase) -> Result<(), Error> {
-        let file_path = Path::new("assets").join(&case.name);
+        let file_path = Path::new("assets").join(case.name);
         let data = std::fs::read(file_path).unwrap();
 
         let archive = rawzip::ZipArchive::from_slice(data.as_slice())?;

@@ -1,6 +1,7 @@
 use crate::crc::crc32_chunk;
 use crate::errors::{Error, ErrorKind};
 use crate::reader_at::{FileReader, MutexReader, ReaderAtExt};
+use crate::time::{extract_best_timestamp, ZipDateTime};
 use crate::utils::{le_u16, le_u32, le_u64};
 use crate::{EndOfCentralDirectoryRecordFixed, ReaderAt, ZipLocator};
 use std::{
@@ -11,7 +12,6 @@ use std::{
 pub(crate) const END_OF_CENTRAL_DIR_SIGNATURE64: u32 = 0x06064b50;
 pub(crate) const END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE: u32 = 0x07064b50;
 pub(crate) const CENTRAL_HEADER_SIGNATURE: u32 = 0x02014b50;
-
 /// The recommended buffer size to use when reading from a zip file.
 ///
 /// This buffer size was chosen as it can hold an entire central directory
@@ -1394,6 +1394,13 @@ impl<'a> ZipFileHeaderRecord<'a> {
     /// capable of zip slips. Prefer [`Self::file_safe_path`].
     pub fn file_raw_path(&self) -> &[u8] {
         self.file_name.as_bytes()
+    }
+
+    /// Returns the last modification date and time.
+    ///
+    /// This method parses the extra field data to locate more accurate timestamps.
+    pub fn last_modified(&self) -> ZipDateTime {
+        extract_best_timestamp(self.extra_field, self.last_mod_time, self.last_mod_date)
     }
 }
 

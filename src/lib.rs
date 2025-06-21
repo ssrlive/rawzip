@@ -6,6 +6,7 @@ mod crc;
 mod errors;
 mod locator;
 mod reader_at;
+mod time;
 mod utils;
 mod writer;
 
@@ -14,4 +15,5 @@ pub use crc::crc32;
 pub use errors::{Error, ErrorKind};
 pub use locator::*;
 pub use reader_at::{FileReader, ReaderAt};
+pub use time::{TimeZone, ZipDateTime};
 pub use writer::*;
