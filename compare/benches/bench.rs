@@ -27,7 +27,8 @@ fn parse_benchmarks(c: &mut Criterion) {
     group.throughput(criterion::Throughput::Bytes(zip_data.len() as u64));
 
     group.bench_function("rawzip", |b| {
-        b.iter(|| {
+        #[inline(never)]
+        fn rawzip_bench(zip_data: &[u8]) {
             let archive = rawzip::ZipArchive::from_slice(&zip_data).unwrap();
             let mut total_size = 0u64;
             let mut entries = archive.entries();
@@ -35,7 +36,11 @@ fn parse_benchmarks(c: &mut Criterion) {
                 total_size += entry.uncompressed_size_hint();
             }
             assert_eq!(total_size, 100_000);
-        })
+        }
+
+        b.iter(|| {
+            rawzip_bench(&zip_data);
+        });
     });
 
     group.bench_function("rc_zip", |b| {
