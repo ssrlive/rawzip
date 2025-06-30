@@ -1,5 +1,6 @@
 use crate::crc::crc32_chunk;
 use crate::errors::{Error, ErrorKind};
+use crate::mode::{msdos_mode_to_file_mode, unix_mode_to_file_mode, EntryMode};
 use crate::reader_at::{FileReader, MutexReader, ReaderAtExt};
 use crate::time::{extract_best_timestamp, ZipDateTime};
 use crate::utils::{le_u16, le_u32, le_u64};
@@ -1401,6 +1402,33 @@ impl<'a> ZipFileHeaderRecord<'a> {
     /// This method parses the extra field data to locate more accurate timestamps.
     pub fn last_modified(&self) -> ZipDateTime {
         extract_best_timestamp(self.extra_field, self.last_mod_time, self.last_mod_date)
+    }
+
+    /// Returns the file mode information extracted from the external file attributes.
+    pub fn mode(&self) -> EntryMode {
+        let creator_version = self.version_made_by >> 8;
+
+        const UNIX: u16 = 3;
+        const MACOS: u16 = 19;
+        const NTFS: u16 = 11;
+        const VFAT: u16 = 14;
+        const FAT: u16 = 0;
+
+        let mut mode = match creator_version {
+            // Unix and macOS
+            UNIX | MACOS => unix_mode_to_file_mode(self.external_file_attrs >> 16),
+            // NTFS, VFAT, FAT
+            NTFS | VFAT | FAT => msdos_mode_to_file_mode(self.external_file_attrs),
+            // default to basic permissions
+            _ => 0o644,
+        };
+
+        // Check if it's a directory by filename ending with '/'
+        if self.is_dir() {
+            mode |= 0o040000; // S_IFDIR
+        }
+
+        EntryMode::new(mode)
     }
 }
 

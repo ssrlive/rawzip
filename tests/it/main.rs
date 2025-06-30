@@ -33,6 +33,7 @@ struct ZipTestFileEntry {
     name: &'static str,
     expected_content: ExpectedContent,
     expected_datetime: Option<rawzip::ZipDateTime>,
+    expected_mode: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -61,6 +62,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2010-09-05 02:12:01 UTC
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
@@ -75,6 +77,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2010-09-05 05:52:58 UTC
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
         ],
         ..Default::default()
@@ -109,6 +112,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2010-09-05 02:12:01 UTC
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
@@ -123,6 +127,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2010-09-05 05:52:58 UTC
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
         ],
         ..Default::default()
@@ -148,6 +153,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2010-09-05 02:12:01 UTC
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
@@ -162,6 +168,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2010-09-05 05:52:58 UTC
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
         ],
         ..Default::default()
@@ -185,6 +192,7 @@ zip_test_case!(
                 0,
                 TimeZone::Utc
             )), // 2012-02-03 21:56:48 (UTC from archive)
+            expected_mode: Some(0o120777), // Symlink with 777 permissions
         }],
         ..Default::default()
     }
@@ -217,6 +225,7 @@ zip_test_case!(
                     0,
                     TimeZone::Local
                 )),
+                expected_mode: Some(0o100666), // Regular file with 666 permissions (Windows)
             },
             ZipTestFileEntry {
                 name: "dir/bar",
@@ -231,6 +240,7 @@ zip_test_case!(
                     0,
                     TimeZone::Local
                 )),
+                expected_mode: Some(0o100666), // Regular file with 666 permissions (Windows)
             },
             ZipTestFileEntry {
                 name: "dir/empty/",
@@ -245,6 +255,7 @@ zip_test_case!(
                     0,
                     TimeZone::Local
                 )),
+                expected_mode: Some(0o040777), // Directory with 777 permissions (Windows)
             },
             ZipTestFileEntry {
                 name: "readonly",
@@ -259,6 +270,7 @@ zip_test_case!(
                     0,
                     TimeZone::Local
                 )),
+                expected_mode: Some(0o100444), // Read-only file (Windows)
             },
         ],
         ..Default::default()
@@ -284,6 +296,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2011-12-08 10:04:24 UTC (but stored as local time)
+                expected_mode: Some(0o100666), // Regular file with 666 permissions (Unix)
             },
             ZipTestFileEntry {
                 name: "dir/bar",
@@ -298,6 +311,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2011-12-08 10:04:50 UTC (but stored as local time)
+                expected_mode: Some(0o100666), // Regular file with 666 permissions (Unix)
             },
             ZipTestFileEntry {
                 name: "dir/empty/",
@@ -312,6 +326,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2011-12-08 10:08:06 UTC (but stored as local time)
+                expected_mode: Some(0o040777), // Directory with 777 permissions (Unix)
             },
             ZipTestFileEntry {
                 name: "readonly",
@@ -326,6 +341,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2011-12-08 10:06:08 UTC (but stored as local time)
+                expected_mode: Some(0o100444), // Read-only file (Unix)
             },
         ],
         ..Default::default()
@@ -352,6 +368,7 @@ zip_test_case!(
                     0,
                     TimeZone::Local
                 )), // DOS timestamp 0x0000 0x0000 normalized to 1980-01-01 00:00:00
+                expected_mode: Some(0o100666), // Regular file with 666 permissions
             },
             ZipTestFileEntry {
                 name: "bar.txt",
@@ -366,6 +383,7 @@ zip_test_case!(
                     0,
                     TimeZone::Local
                 )), // DOS timestamp 0x0000 0x0000 normalized to 1980-01-01 00:00:00
+                expected_mode: Some(0o100666), // Regular file with 666 permissions
             },
         ],
         ..Default::default()
@@ -390,6 +408,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2012-03-09 00:59:10 (UTC from archive)
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "bar.txt",
@@ -404,6 +423,7 @@ zip_test_case!(
                     0,
                     TimeZone::Utc
                 )), // 2012-03-09 00:59:12 (UTC from archive)
+                expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
         ],
         ..Default::default()
@@ -429,6 +449,7 @@ zip_test_case!(
                 0,
                 TimeZone::Utc
             )), // 2012-08-10 18:33:32 (UTC from archive)
+            expected_mode: Some(0o100644), // Regular file with 644 permissions
         }],
         ..Default::default()
     }
@@ -451,6 +472,7 @@ zip_test_case!(
                 244817900,
                 TimeZone::Utc
             )), // 2017-10-31 21:11:57.244817900 (-7 hours) = 2017-11-01 04:11:57.244817900 UTC
+            expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
         ..Default::default()
     }
@@ -473,6 +495,7 @@ zip_test_case!(
                 0,
                 TimeZone::Utc
             )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
+            expected_mode: Some(0o100644), // Regular file with 644 permissions
         }],
         ..Default::default()
     }
@@ -495,6 +518,7 @@ zip_test_case!(
                 0,
                 TimeZone::Utc
             )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
+            expected_mode: Some(0o100644), // Regular file with 644 permissions
         }],
         ..Default::default()
     }
@@ -517,6 +541,7 @@ zip_test_case!(
                 0,
                 TimeZone::Local
             )), // 2017-10-31 21:11:58.000 (DOS local time)
+            expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
         ..Default::default()
     }
@@ -539,6 +564,7 @@ zip_test_case!(
                 244817900,
                 TimeZone::Utc
             )), // 2017-10-31 21:11:57.244817900 (-7 hours) = 2017-11-01 04:11:57.244817900 UTC
+            expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
         ..Default::default()
     }
@@ -561,6 +587,7 @@ zip_test_case!(
                 244000000,
                 TimeZone::Utc
             )), // 2017-10-31 21:11:57.244000000 (-7 hours) = 2017-11-01 04:11:57.244000000 UTC
+            expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
         ..Default::default()
     }
@@ -583,6 +610,7 @@ zip_test_case!(
                 0,
                 TimeZone::Utc
             )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
+            expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
         ..Default::default()
     }
@@ -622,6 +650,15 @@ fn process_archive_files<R: rawzip::ReaderAt>(
                                 &actual_dt, expected_dt,
                                 "Datetime mismatch for file {}: expected {}, got {}",
                                 expected_file.name, expected_dt, actual_dt
+                            );
+                        }
+
+                        if let Some(expected_mode) = expected_file.expected_mode {
+                            let actual_mode = entry.mode().value();
+                            assert_eq!(
+                                actual_mode, expected_mode,
+                                "Mode mismatch for file {}: expected 0o{:o}, got 0o{:o}",
+                                expected_file.name, expected_mode, actual_mode
                             );
                         }
 
@@ -722,6 +759,15 @@ fn process_slice_archive_files(
                                 &actual_dt, expected_dt,
                                 "Datetime mismatch for file {}: expected {}, got {}",
                                 expected_file.name, expected_dt, actual_dt
+                            );
+                        }
+
+                        if let Some(expected_mode) = expected_file.expected_mode {
+                            let actual_mode = entry.mode().value();
+                            assert_eq!(
+                                actual_mode, expected_mode,
+                                "Mode mismatch for file {}: expected 0o{:o}, got 0o{:o}",
+                                expected_file.name, expected_mode, actual_mode
                             );
                         }
 
