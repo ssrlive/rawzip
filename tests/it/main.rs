@@ -4,6 +4,8 @@ use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
 
+mod zip64_tests;
+
 macro_rules! zip_test_case {
     ($name:expr, $case:expr) => {
         paste::paste! {
