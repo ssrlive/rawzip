@@ -92,6 +92,8 @@ jobs:
         toolchain: stable
     - name: Build benchmark
       run: cargo bench --manifest-path bench/Cargo.toml -- --test
+    - name: Build benchmark
+      run: cargo bench --manifest-path compare/Cargo.toml -- --test
 
   # Check that all files are formatted properly.
   rustfmt:
