@@ -123,8 +123,8 @@ impl From<ErrorKind> for Error {
     }
 }
 
-impl From<std::io::Error> for ErrorKind {
-    fn from(err: std::io::Error) -> ErrorKind {
-        ErrorKind::IO(err)
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Error {
+        Error::from(ErrorKind::IO(err))
     }
 }

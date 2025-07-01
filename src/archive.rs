@@ -422,8 +422,7 @@ where
     pub fn get_entry(&self, entry: ZipArchiveEntryWayfinder) -> Result<ZipEntry<'_, R>, Error> {
         let mut buffer = [0u8; ZipLocalFileHeaderFixed::SIZE];
         self.reader
-            .read_exact_at(&mut buffer, entry.local_header_offset)
-            .map_err(Error::io)?;
+            .read_exact_at(&mut buffer, entry.local_header_offset)?;
 
         // The central directory is the source of truth so we really only parse
         // out the local file header to verify the signature and understand the
@@ -665,9 +664,7 @@ impl DataDescriptor {
         R: ReaderAt,
     {
         let mut buffer = [0u8; Self::SIZE];
-        reader
-            .read_exact_at(&mut buffer, offset)
-            .map_err(Error::io)?;
+        reader.read_exact_at(&mut buffer, offset)?;
         Self::parse(&buffer)
     }
 }
@@ -759,15 +756,11 @@ where
                 Err(e) if e.is_eof() => {
                     let remaining = data.len();
                     self.buffer.copy_within(self.pos..self.end, 0);
-                    let read = self
-                        .archive
-                        .reader
-                        .try_read_at_least_at(
-                            &mut self.buffer[remaining..],
-                            ZipFileHeaderFixed::SIZE,
-                            self.offset,
-                        )
-                        .map_err(Error::io)?;
+                    let read = self.archive.reader.try_read_at_least_at(
+                        &mut self.buffer[remaining..],
+                        ZipFileHeaderFixed::SIZE,
+                        self.offset,
+                    )?;
                     self.offset += read as u64;
                     self.pos = 0;
                     self.end = remaining + read;
@@ -1569,39 +1562,17 @@ impl ZipLocalFileHeaderFixed {
     where
         W: Write,
     {
-        writer
-            .write_all(&self.signature.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.version_needed.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.flags.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.compression_method.0.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.last_mod_time.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.last_mod_date.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.crc32.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.compressed_size.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.uncompressed_size.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.file_name_len.to_le_bytes())
-            .map_err(Error::io)?;
-        writer
-            .write_all(&self.extra_field_len.to_le_bytes())
-            .map_err(Error::io)?;
+        writer.write_all(&self.signature.to_le_bytes())?;
+        writer.write_all(&self.version_needed.to_le_bytes())?;
+        writer.write_all(&self.flags.to_le_bytes())?;
+        writer.write_all(&self.compression_method.0.to_le_bytes())?;
+        writer.write_all(&self.last_mod_time.to_le_bytes())?;
+        writer.write_all(&self.last_mod_date.to_le_bytes())?;
+        writer.write_all(&self.crc32.to_le_bytes())?;
+        writer.write_all(&self.compressed_size.to_le_bytes())?;
+        writer.write_all(&self.uncompressed_size.to_le_bytes())?;
+        writer.write_all(&self.file_name_len.to_le_bytes())?;
+        writer.write_all(&self.extra_field_len.to_le_bytes())?;
         Ok(())
     }
 }
