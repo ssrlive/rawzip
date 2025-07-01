@@ -146,9 +146,7 @@ where
         };
 
         header.write(&mut self.writer)?;
-        self.writer
-            .write_all(safe_file_path.as_bytes())
-            .map_err(Error::io)?;
+        self.writer.write_all(safe_file_path.as_bytes())?;
         let file_header = FileHeader {
             name: safe_file_path,
             compression_method: CompressionMethod::Store,
@@ -196,9 +194,7 @@ where
         };
 
         header.write(&mut self.writer)?;
-        self.writer
-            .write_all(safe_file_path.as_bytes())
-            .map_err(Error::io)?;
+        self.writer.write_all(safe_file_path.as_bytes())?;
 
         Ok(ZipEntryWriter::new(
             self,
@@ -228,8 +224,7 @@ where
         for file in &self.files {
             // Central file header signature
             self.writer
-                .write_all(&CENTRAL_HEADER_SIGNATURE.to_le_bytes())
-                .map_err(Error::io)?;
+                .write_all(&CENTRAL_HEADER_SIGNATURE.to_le_bytes())?;
 
             // Version made by - use ZIP64 version if needed
             let version_made_by = if needs_zip64 {
@@ -237,9 +232,7 @@ where
             } else {
                 20
             };
-            self.writer
-                .write_all(&version_made_by.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&version_made_by.to_le_bytes())?;
 
             // Version needed to extract - use ZIP64 version if needed
             let version_needed = if needs_zip64 {
@@ -247,79 +240,53 @@ where
             } else {
                 20
             };
-            self.writer
-                .write_all(&version_needed.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&version_needed.to_le_bytes())?;
 
             // General purpose bit flag
-            self.writer
-                .write_all(&8u16.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&8u16.to_le_bytes())?;
 
             // Compression method
             self.writer
-                .write_all(&file.compression_method.as_id().as_u16().to_le_bytes())
-                .map_err(Error::io)?;
+                .write_all(&file.compression_method.as_id().as_u16().to_le_bytes())?;
 
             // Last mod file time and date
-            self.writer
-                .write_all(&0u16.to_le_bytes())
-                .map_err(Error::io)?;
-            self.writer
-                .write_all(&0u16.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&0u16.to_le_bytes())?;
+            self.writer.write_all(&0u16.to_le_bytes())?;
 
             // CRC-32
-            self.writer
-                .write_all(&file.crc.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&file.crc.to_le_bytes())?;
 
             // Compressed size - use 0xFFFFFFFF if ZIP64
             let compressed_size = file.compressed_size.min(ZIP64_THRESHOLD_FILE_SIZE) as u32;
-            self.writer
-                .write_all(&compressed_size.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&compressed_size.to_le_bytes())?;
 
             // Uncompressed size - use 0xFFFFFFFF if ZIP64
             let uncompressed_size = file.uncompressed_size.min(ZIP64_THRESHOLD_FILE_SIZE) as u32;
-            self.writer
-                .write_all(&uncompressed_size.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&uncompressed_size.to_le_bytes())?;
 
             // File name length
             self.writer
-                .write_all(&(file.name.len() as u16).to_le_bytes())
-                .map_err(Error::io)?;
+                .write_all(&(file.name.len() as u16).to_le_bytes())?;
 
             // Extra field length
             let extra_field_length = file.zip64_extra_field_size();
-            self.writer
-                .write_all(&extra_field_length.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&extra_field_length.to_le_bytes())?;
 
             // File comment length
-            self.writer
-                .write_all(&0u16.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&0u16.to_le_bytes())?;
 
             // Disk number start, internal file attributes
-            self.writer.write_all(&[0u8; 4]).map_err(Error::io)?;
+            self.writer.write_all(&[0u8; 4])?;
 
             // External file attributes
-            self.writer
-                .write_all(&0u32.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&0u32.to_le_bytes())?;
 
             // Local header offset - use 0xFFFFFFFF if ZIP64
             let local_header_offset = file.local_header_offset.min(ZIP64_THRESHOLD_OFFSET) as u32;
-            self.writer
-                .write_all(&local_header_offset.to_le_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(&local_header_offset.to_le_bytes())?;
 
             // File name
-            self.writer
-                .write_all(file.name.as_bytes())
-                .map_err(Error::io)?;
+            self.writer.write_all(file.name.as_bytes())?;
 
             // ZIP64 extended information extra field
             file.write_zip64_extra_field(&mut self.writer)?;
@@ -345,40 +312,28 @@ where
         }
 
         // Write regular End of Central Directory Record
-        self.writer
-            .write_all(&END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES)
-            .map_err(Error::io)?;
+        self.writer.write_all(&END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES)?;
 
         // Disk numbers
-        self.writer.write_all(&[0u8; 4]).map_err(Error::io)?;
+        self.writer.write_all(&[0u8; 4])?;
 
         // Number of entries - use 0xFFFF if ZIP64
         let entries_count = total_entries.min(ZIP64_THRESHOLD_ENTRIES) as u16;
-        self.writer
-            .write_all(&entries_count.to_le_bytes())
-            .map_err(Error::io)?;
-        self.writer
-            .write_all(&entries_count.to_le_bytes())
-            .map_err(Error::io)?;
+        self.writer.write_all(&entries_count.to_le_bytes())?;
+        self.writer.write_all(&entries_count.to_le_bytes())?;
 
         // Central directory size - use 0xFFFFFFFF if ZIP64
         let cd_size = central_directory_size.min(ZIP64_THRESHOLD_OFFSET) as u32;
-        self.writer
-            .write_all(&cd_size.to_le_bytes())
-            .map_err(Error::io)?;
+        self.writer.write_all(&cd_size.to_le_bytes())?;
 
         // Central directory offset - use 0xFFFFFFFF if ZIP64
         let cd_offset = central_directory_offset.min(ZIP64_THRESHOLD_OFFSET) as u32;
-        self.writer
-            .write_all(&cd_offset.to_le_bytes())
-            .map_err(Error::io)?;
+        self.writer.write_all(&cd_offset.to_le_bytes())?;
 
         // Comment length
-        self.writer
-            .write_all(&0u16.to_le_bytes())
-            .map_err(Error::io)?;
+        self.writer.write_all(&0u16.to_le_bytes())?;
 
-        self.writer.flush().map_err(Error::io)?;
+        self.writer.flush()?;
         Ok(self.writer.writer)
     }
 }
@@ -431,13 +386,9 @@ impl<'a, W> ZipEntryWriter<'a, W> {
         // Write data descriptor
         self.inner
             .writer
-            .write_all(&DataDescriptor::SIGNATURE.to_le_bytes())
-            .map_err(Error::io)?;
+            .write_all(&DataDescriptor::SIGNATURE.to_le_bytes())?;
 
-        self.inner
-            .writer
-            .write_all(&output.crc.to_le_bytes())
-            .map_err(Error::io)?;
+        self.inner.writer.write_all(&output.crc.to_le_bytes())?;
 
         if output.compressed_size >= ZIP64_THRESHOLD_FILE_SIZE
             || output.uncompressed_size >= ZIP64_THRESHOLD_FILE_SIZE
@@ -445,22 +396,18 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             // Use 64-bit sizes for ZIP64
             self.inner
                 .writer
-                .write_all(&output.compressed_size.to_le_bytes())
-                .map_err(Error::io)?;
+                .write_all(&output.compressed_size.to_le_bytes())?;
             self.inner
                 .writer
-                .write_all(&output.uncompressed_size.to_le_bytes())
-                .map_err(Error::io)?;
+                .write_all(&output.uncompressed_size.to_le_bytes())?;
         } else {
             // Use 32-bit sizes for standard ZIP
             self.inner
                 .writer
-                .write_all(&(output.compressed_size as u32).to_le_bytes())
-                .map_err(Error::io)?;
+                .write_all(&(output.compressed_size as u32).to_le_bytes())?;
             self.inner
                 .writer
-                .write_all(&(output.uncompressed_size as u32).to_le_bytes())
-                .map_err(Error::io)?;
+                .write_all(&(output.uncompressed_size as u32).to_le_bytes())?;
         }
 
         let file_header = FileHeader {
@@ -534,7 +481,7 @@ impl<W> ZipDataWriter<W> {
     where
         W: Write,
     {
-        self.flush().map_err(Error::io)?;
+        self.flush()?;
         let output = DataDescriptorOutput {
             crc: self.crc,
             compressed_size: 0,
@@ -608,9 +555,7 @@ impl FileHeader {
         }
 
         // ZIP64 Extended Information Extra Field header
-        writer
-            .write_all(&ZIP64_EXTRA_FIELD_ID.to_le_bytes())
-            .map_err(Error::io)?;
+        writer.write_all(&ZIP64_EXTRA_FIELD_ID.to_le_bytes())?;
 
         // Calculate size of data portion
         let mut data_size = 0u16;
@@ -624,25 +569,17 @@ impl FileHeader {
             data_size += 8;
         }
 
-        writer
-            .write_all(&data_size.to_le_bytes())
-            .map_err(Error::io)?;
+        writer.write_all(&data_size.to_le_bytes())?;
 
         // Write the actual data fields in the order specified by the spec
         if self.uncompressed_size >= ZIP64_THRESHOLD_FILE_SIZE {
-            writer
-                .write_all(&self.uncompressed_size.to_le_bytes())
-                .map_err(Error::io)?;
+            writer.write_all(&self.uncompressed_size.to_le_bytes())?;
         }
         if self.compressed_size >= ZIP64_THRESHOLD_FILE_SIZE {
-            writer
-                .write_all(&self.compressed_size.to_le_bytes())
-                .map_err(Error::io)?;
+            writer.write_all(&self.compressed_size.to_le_bytes())?;
         }
         if self.local_header_offset >= ZIP64_THRESHOLD_OFFSET {
-            writer
-                .write_all(&self.local_header_offset.to_le_bytes())
-                .map_err(Error::io)?;
+            writer.write_all(&self.local_header_offset.to_le_bytes())?;
         }
 
         Ok(())
@@ -679,51 +616,35 @@ where
     W: Write,
 {
     // ZIP64 End of Central Directory Record signature
-    writer
-        .write_all(&END_OF_CENTRAL_DIR_SIGNATURE64.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&END_OF_CENTRAL_DIR_SIGNATURE64.to_le_bytes())?;
 
     // Size of ZIP64 end of central directory record (excluding signature and this field)
     let record_size = (ZIP64_EOCD_SIZE - 12) as u64;
-    writer
-        .write_all(&record_size.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&record_size.to_le_bytes())?;
 
     // Version made by
-    writer
-        .write_all(&ZIP64_VERSION_NEEDED.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&ZIP64_VERSION_NEEDED.to_le_bytes())?;
 
     // Version needed to extract
-    writer
-        .write_all(&ZIP64_VERSION_NEEDED.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&ZIP64_VERSION_NEEDED.to_le_bytes())?;
 
     // Number of this disk
-    writer.write_all(&0u32.to_le_bytes()).map_err(Error::io)?;
+    writer.write_all(&0u32.to_le_bytes())?;
 
     // Number of the disk with the start of the central directory
-    writer.write_all(&0u32.to_le_bytes()).map_err(Error::io)?;
+    writer.write_all(&0u32.to_le_bytes())?;
 
     // Total number of entries in the central directory on this disk
-    writer
-        .write_all(&total_entries.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&total_entries.to_le_bytes())?;
 
     // Total number of entries in the central directory
-    writer
-        .write_all(&total_entries.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&total_entries.to_le_bytes())?;
 
     // Size of the central directory
-    writer
-        .write_all(&central_directory_size.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&central_directory_size.to_le_bytes())?;
 
     // Offset of start of central directory with respect to the starting disk number
-    writer
-        .write_all(&central_directory_offset.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&central_directory_offset.to_le_bytes())?;
 
     Ok(())
 }
@@ -734,20 +655,16 @@ where
     W: Write,
 {
     // ZIP64 End of Central Directory Locator signature
-    writer
-        .write_all(&END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE.to_le_bytes())?;
 
     // Number of the disk with the start of the ZIP64 end of central directory
-    writer.write_all(&0u32.to_le_bytes()).map_err(Error::io)?;
+    writer.write_all(&0u32.to_le_bytes())?;
 
     // Relative offset of the ZIP64 end of central directory record
-    writer
-        .write_all(&zip64_eocd_offset.to_le_bytes())
-        .map_err(Error::io)?;
+    writer.write_all(&zip64_eocd_offset.to_le_bytes())?;
 
     // Total number of disks
-    writer.write_all(&1u32.to_le_bytes()).map_err(Error::io)?;
+    writer.write_all(&1u32.to_le_bytes())?;
 
     Ok(())
 }
