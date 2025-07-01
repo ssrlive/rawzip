@@ -232,25 +232,40 @@ pub struct ZipSliceEntries<'data> {
 
 impl<'data> ZipSliceEntries<'data> {
     /// Yield the next zip file entry in the central directory if there is any
+    #[inline]
     pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord<'data>>, Error> {
         let Ok(file_header) = ZipFileHeaderFixed::parse(self.entry_data) else {
             return Ok(None);
         };
         self.entry_data = &self.entry_data[ZipFileHeaderFixed::SIZE..];
-        let variable_length = file_header.variable_length();
-        if self.entry_data.len() < variable_length {
+
+        if self.entry_data.len() < file_header.file_name_len as usize {
             return Err(Error::from(ErrorKind::Eof));
         }
-        let (header_data, entry_data) = self.entry_data.split_at(variable_length);
-        let mut entry = ZipFileHeaderRecord::from_parts(file_header, header_data);
+        let (file_name, rest) = self.entry_data.split_at(file_header.file_name_len as usize);
+
+        if rest.len() < file_header.extra_field_len as usize {
+            return Err(Error::from(ErrorKind::Eof));
+        }
+        let (extra_field, rest) = rest.split_at(file_header.extra_field_len as usize);
+
+        if rest.len() < file_header.file_comment_len as usize {
+            return Err(Error::from(ErrorKind::Eof));
+        }
+        let (file_comment, entry_data) = rest.split_at(file_header.file_comment_len as usize);
+
+        let mut entry =
+            ZipFileHeaderRecord::from_parts(file_header, file_name, extra_field, file_comment);
         entry.local_header_offset += self.base_offset;
         self.entry_data = entry_data;
         Ok(Some(entry))
     }
 }
+
 impl<'data> Iterator for ZipSliceEntries<'data> {
     type Item = Result<ZipFileHeaderRecord<'data>, Error>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.next_entry().transpose()
     }
@@ -666,6 +681,7 @@ pub(crate) struct EndOfCentralDirectory {
 
 impl EndOfCentralDirectory {
     /// the start of the zip file proper.
+    #[inline]
     fn base_offset(&self) -> u64 {
         match &self.zip64 {
             Some(_) => 0,
@@ -689,6 +705,7 @@ impl EndOfCentralDirectory {
     }
 
     /// offset of the start of the central directory
+    #[inline]
     fn offset(&self) -> u64 {
         self.zip64
             .as_ref()
@@ -696,6 +713,7 @@ impl EndOfCentralDirectory {
             .unwrap_or_else(|| self.base_offset() + u64::from(self.eocd.central_dir_offset))
     }
 
+    #[inline]
     fn entries(&self) -> u64 {
         self.zip64
             .as_ref()
@@ -703,6 +721,7 @@ impl EndOfCentralDirectory {
             .unwrap_or(u64::from(self.eocd.num_entries))
     }
 
+    #[inline]
     fn comment_len(&self) -> usize {
         self.eocd.comment_len as usize
     }
@@ -728,6 +747,7 @@ where
     ///
     /// This method reads from the underlying archive reader into the provided
     /// buffer to parse entry headers.
+    #[inline]
     pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord>, Error> {
         let file_header = loop {
             let data = &self.buffer[self.pos..self.end];
@@ -776,8 +796,7 @@ where
             self.end = remaining + read;
         }
 
-        let mut file_header =
-            ZipFileHeaderRecord::from_parts(file_header, &self.buffer[self.pos..]);
+        let mut file_header = ZipFileHeaderRecord::from_data(file_header, &self.buffer[self.pos..]);
         file_header.local_header_offset += self.base_offset;
         self.pos += variable_length;
         self.entries_yielded += 1;
@@ -845,6 +864,7 @@ pub(crate) struct Zip64EndOfCentralDirectoryRecord {
 impl Zip64EndOfCentralDirectoryRecord {
     pub(crate) const SIZE: usize = 56;
 
+    #[inline]
     pub fn parse(data: &[u8]) -> Result<Zip64EndOfCentralDirectoryRecord, Error> {
         if data.len() < Self::SIZE {
             return Err(Error::from(ErrorKind::Eof));
@@ -880,11 +900,13 @@ pub struct CompressionMethodId(u16);
 
 impl CompressionMethodId {
     /// Returns the raw `u16` value of the compression method ID.
+    #[inline]
     pub fn as_u16(&self) -> u16 {
         self.0
     }
 
     /// Converts the numeric ID to a `CompressionMethod` enum.
+    #[inline]
     pub fn as_method(&self) -> CompressionMethod {
         match self.0 {
             0 => CompressionMethod::Store,
@@ -947,6 +969,7 @@ pub enum CompressionMethod {
 
 impl CompressionMethod {
     /// Return the numeric id of this compression method.
+    #[inline]
     pub fn as_id(&self) -> CompressionMethodId {
         let value = match self {
             CompressionMethod::Store => 0,
@@ -992,17 +1015,20 @@ pub struct ZipStr<'a>(&'a [u8]);
 
 impl<'a> ZipStr<'a> {
     /// Creates a new `ZipStr` from a byte slice.
+    #[inline]
     pub fn new(data: &'a [u8]) -> Self {
         Self(data)
     }
 
     /// Returns the underlying byte slice.
+    #[inline]
     pub fn as_bytes(&self) -> &'a [u8] {
         self.0
     }
 
     /// Converts the borrowed `ZipStr` into an owned `ZipString` by cloning the
     /// data.
+    #[inline]
     pub fn into_owned(&self) -> ZipString {
         ZipString::new(self.0.to_vec())
     }
@@ -1016,11 +1042,13 @@ pub struct ZipString(Vec<u8>);
 
 impl ZipString {
     /// Creates a new `ZipString` from a vector of bytes.
+    #[inline]
     pub fn new(data: Vec<u8>) -> Self {
         Self(data)
     }
 
     /// Returns a borrowed `ZipStr` view of this `ZipString`.
+    #[inline]
     pub fn as_str(&self) -> ZipStr {
         ZipStr::new(self.0.as_slice())
     }
@@ -1035,6 +1063,7 @@ pub struct ZipFilePath<'a>(ZipStr<'a>);
 
 impl<'a> ZipFilePath<'a> {
     /// Creates a Zip file path from a byte slice.
+    #[inline]
     pub fn new(data: &'a [u8]) -> Self {
         Self(ZipStr::new(data))
     }
@@ -1043,6 +1072,7 @@ impl<'a> ZipFilePath<'a> {
     ///
     /// **WARNING**: this may contain be an absolute path or contain a file path
     /// capable of zip slips. Prefer [`normalize`](ZipFilePath::normalize).
+    #[inline]
     pub fn as_bytes(&self) -> &'a [u8] {
         self.0.as_bytes()
     }
@@ -1093,6 +1123,7 @@ impl<'a> ZipFilePath<'a> {
     /// let path = ZipFilePath::new(b"dir/file.txt");
     /// assert!(!path.is_dir());
     /// ```
+    #[inline]
     pub fn is_dir(&self) -> bool {
         self.0.as_bytes().last() == Some(&b'/')
     }
@@ -1228,13 +1259,13 @@ pub struct ZipFileHeaderRecord<'a> {
 }
 
 impl<'a> ZipFileHeaderRecord<'a> {
-    fn from_parts(header: ZipFileHeaderFixed, data: &'a [u8]) -> Self {
-        let file_name = &data[..header.file_name_len as usize];
-        let data = &data[header.file_name_len as usize..];
-        let extra_field = &data[..header.extra_field_len as usize];
-        let data = &data[header.extra_field_len as usize..];
-        let file_comment = &data[..header.file_comment_len as usize];
-
+    #[inline]
+    fn from_parts(
+        header: ZipFileHeaderFixed,
+        file_name: &'a [u8],
+        extra_field: &'a [u8],
+        file_comment: &'a [u8],
+    ) -> Self {
         let mut result = Self {
             signature: header.signature,
             version_made_by: header.version_made_by,
@@ -1327,9 +1358,19 @@ impl<'a> ZipFileHeaderRecord<'a> {
         result
     }
 
+    fn from_data(header: ZipFileHeaderFixed, data: &'a [u8]) -> Self {
+        let file_name = &data[..header.file_name_len as usize];
+        let data = &data[header.file_name_len as usize..];
+        let extra_field = &data[..header.extra_field_len as usize];
+        let data = &data[header.extra_field_len as usize..];
+        let file_comment = &data[..header.file_comment_len as usize];
+        Self::from_parts(header, file_name, extra_field, file_comment)
+    }
+
     /// Describes if the file is a directory.
     ///
     /// See [`ZipFilePath::is_dir`] for more information.
+    #[inline]
     pub fn is_dir(&self) -> bool {
         self.file_name.is_dir()
     }
@@ -1341,11 +1382,13 @@ impl<'a> ZipFileHeaderRecord<'a> {
     ///
     /// > This descriptor MUST exist if bit 3 of the general purpose bit flag is
     /// > set
+    #[inline]
     pub fn has_data_descriptor(&self) -> bool {
         self.flags & 0x08 != 0
     }
 
     /// Describes where the file's data is located within the archive.
+    #[inline]
     pub fn wayfinder(&self) -> ZipArchiveEntryWayfinder {
         ZipArchiveEntryWayfinder {
             uncompressed_size: self.uncompressed_size,
@@ -1360,6 +1403,7 @@ impl<'a> ZipFileHeaderRecord<'a> {
     ///
     /// **WARNING**: this number has not yet been validated, so don't trust it
     /// to make allocation decisions.
+    #[inline]
     pub fn uncompressed_size_hint(&self) -> u64 {
         self.uncompressed_size
     }
@@ -1368,16 +1412,19 @@ impl<'a> ZipFileHeaderRecord<'a> {
     ///
     /// **WARNING**: this number has not yet been validated, so don't trust it
     /// to make allocation decisions.
+    #[inline]
     pub fn compressed_size_hint(&self) -> u64 {
         self.compressed_size
     }
 
     /// The offset to the local file header within the Zip archive.
+    #[inline]
     pub fn local_header_offset(&self) -> u64 {
         self.local_header_offset
     }
 
     /// The compression method used to compress the data
+    #[inline]
     pub fn compression_method(&self) -> CompressionMethod {
         self.compression_method.as_method()
     }
@@ -1385,6 +1432,7 @@ impl<'a> ZipFileHeaderRecord<'a> {
     /// Return the sanitized file path.
     ///
     /// See [`ZipFilePath::normalize`] for more information.
+    #[inline]
     pub fn file_safe_path(&self) -> Result<Cow<str>, Error> {
         self.file_name.normalize()
     }
@@ -1393,6 +1441,7 @@ impl<'a> ZipFileHeaderRecord<'a> {
     ///
     /// **WARNING**: this may contain be an absolute path or contain a file path
     /// capable of zip slips. Prefer [`Self::file_safe_path`].
+    #[inline]
     pub fn file_raw_path(&self) -> &[u8] {
         self.file_name.as_bytes()
     }
@@ -1400,11 +1449,13 @@ impl<'a> ZipFileHeaderRecord<'a> {
     /// Returns the last modification date and time.
     ///
     /// This method parses the extra field data to locate more accurate timestamps.
+    #[inline]
     pub fn last_modified(&self) -> ZipDateTime {
         extract_best_timestamp(self.extra_field, self.last_mod_time, self.last_mod_date)
     }
 
     /// Returns the file mode information extracted from the external file attributes.
+    #[inline]
     pub fn mode(&self) -> EntryMode {
         let creator_version = self.version_made_by >> 8;
 
@@ -1447,6 +1498,7 @@ impl ZipArchiveEntryWayfinder {
     ///
     /// This is a convenience method to avoid having to deal with lifetime
     /// issues on a `ZipFileHeaderRecord`
+    #[inline]
     pub fn uncompressed_size_hint(&self) -> u64 {
         self.uncompressed_size
     }
@@ -1455,6 +1507,7 @@ impl ZipArchiveEntryWayfinder {
     ///
     /// This is a convenience method to avoid having to deal with lifetime
     /// issues on a `ZipFileHeaderRecord`
+    #[inline]
     pub fn compressed_size_hint(&self) -> u64 {
         self.compressed_size
     }
@@ -1583,6 +1636,7 @@ impl ZipFileHeaderFixed {
 impl ZipFileHeaderFixed {
     const SIZE: usize = 46;
 
+    #[inline]
     pub fn parse(data: &[u8]) -> Result<ZipFileHeaderFixed, Error> {
         if data.len() < Self::SIZE {
             return Err(Error::from(ErrorKind::Eof));
