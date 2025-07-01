@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
 
+mod utf8_tests;
 mod zip64_tests;
 
 macro_rules! zip_test_case {

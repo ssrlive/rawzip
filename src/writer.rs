@@ -10,6 +10,10 @@ const ZIP64_EXTRA_FIELD_ID: u16 = 0x0001;
 const ZIP64_VERSION_NEEDED: u16 = 45; // 4.5
 const ZIP64_EOCD_SIZE: usize = 56;
 
+// General purpose bit flags
+const FLAG_DATA_DESCRIPTOR: u16 = 0x08; // bit 3: data descriptor present
+const FLAG_UTF8_ENCODING: u16 = 0x800; // bit 11: UTF-8 encoding flag (EFS)
+
 // ZIP64 thresholds - when to switch to ZIP64 format
 const ZIP64_THRESHOLD_FILE_SIZE: u64 = u32::MAX as u64;
 const ZIP64_THRESHOLD_OFFSET: u64 = u32::MAX as u64;
@@ -129,7 +133,12 @@ where
         }
 
         let local_header_offset = self.writer.count();
-        let flags = 0x0;
+        let mut flags = 0u16;
+        if needs_utf8_encoding(&safe_file_path) {
+            flags |= FLAG_UTF8_ENCODING;
+        } else {
+            flags &= !FLAG_UTF8_ENCODING;
+        }
 
         let header = ZipLocalFileHeaderFixed {
             signature: ZipLocalFileHeaderFixed::SIGNATURE,
@@ -154,6 +163,7 @@ where
             compressed_size: 0,
             uncompressed_size: 0,
             crc: 0,
+            flags,
         };
         self.files.push(file_header);
 
@@ -177,7 +187,12 @@ where
         }
 
         let local_header_offset = self.writer.count();
-        let flags = 0x8; // data descriptor
+        let mut flags = FLAG_DATA_DESCRIPTOR;
+        if needs_utf8_encoding(&safe_file_path) {
+            flags |= FLAG_UTF8_ENCODING;
+        } else {
+            flags &= !FLAG_UTF8_ENCODING;
+        }
 
         let header = ZipLocalFileHeaderFixed {
             signature: ZipLocalFileHeaderFixed::SIGNATURE,
@@ -201,6 +216,7 @@ where
             safe_file_path,
             local_header_offset,
             options.compression_method,
+            flags,
         ))
     }
 
@@ -226,24 +242,18 @@ where
             self.writer
                 .write_all(&CENTRAL_HEADER_SIGNATURE.to_le_bytes())?;
 
-            // Version made by - use ZIP64 version if needed
-            let version_made_by = if needs_zip64 {
+            // Version made by and version needed to extract
+            let version = if file.needs_zip64() {
                 ZIP64_VERSION_NEEDED
             } else {
                 20
             };
-            self.writer.write_all(&version_made_by.to_le_bytes())?;
 
-            // Version needed to extract - use ZIP64 version if needed
-            let version_needed = if needs_zip64 {
-                ZIP64_VERSION_NEEDED
-            } else {
-                20
-            };
-            self.writer.write_all(&version_needed.to_le_bytes())?;
+            self.writer.write_all(&version.to_le_bytes())?; // Version made by
+            self.writer.write_all(&version.to_le_bytes())?; // Version needed to extract
 
             // General purpose bit flag
-            self.writer.write_all(&8u16.to_le_bytes())?;
+            self.writer.write_all(&file.flags.to_le_bytes())?;
 
             // Compression method
             self.writer
@@ -350,6 +360,7 @@ pub struct ZipEntryWriter<'a, W> {
     name: String,
     local_header_offset: u64,
     compression_method: CompressionMethod,
+    flags: u16,
 }
 
 impl<'a, W> ZipEntryWriter<'a, W> {
@@ -359,6 +370,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
         name: String,
         local_header_offset: u64,
         compression_method: CompressionMethod,
+        flags: u16,
     ) -> Self {
         ZipEntryWriter {
             inner,
@@ -366,6 +378,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             name,
             local_header_offset,
             compression_method,
+            flags,
         }
     }
 
@@ -417,6 +430,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             compressed_size: output.compressed_size,
             uncompressed_size: output.uncompressed_size,
             crc: output.crc,
+            flags: self.flags,
         };
         self.inner.files.push(file_header);
 
@@ -536,6 +550,7 @@ struct FileHeader {
     compressed_size: u64,
     uncompressed_size: u64,
     crc: u32,
+    flags: u16,
 }
 
 impl FileHeader {
@@ -691,4 +706,28 @@ impl ZipEntryOptions {
         self.compression_method = compression_method;
         self
     }
+}
+
+/// Determines if a filename requires UTF-8 encoding based on CP-437 compatibility.
+///
+/// This implementation follows the same logic as Go's archive/zip package.
+/// Officially, ZIP uses CP-437, but many readers use the system's local character
+/// encoding. Most encodings are compatible with a large subset of CP-437, which
+/// itself is ASCII-like.
+///
+/// According to the ZIP specification, most ZIP creators only set the UTF-8 flag
+/// when it's actually needed for the filename.
+fn needs_utf8_encoding(filename: &str) -> bool {
+    for ch in filename.chars() {
+        let code_point = ch as u32;
+
+        // Forbid 0x7e (~) and 0x5c (\) since EUC-KR and Shift-JIS replace those
+        // characters with localized currency and overline characters.
+        // Also forbid control characters (< 0x20) and characters above 0x7d.
+        if code_point < 0x20 || code_point > 0x7d || code_point == 0x5c {
+            return true;
+        }
+    }
+
+    false
 }
