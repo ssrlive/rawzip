@@ -103,12 +103,14 @@ impl FileReader {
 }
 
 impl ReaderAt for FileReader {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
         self.0.read_at(buf, offset)
     }
 }
 
 impl std::io::Seek for FileReader {
+    #[inline]
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
         self.0.seek(pos)
     }
@@ -180,18 +182,21 @@ where
 }
 
 impl<T: ReaderAt> ReaderAt for &'_ T {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
         (*self).read_at(buf, offset)
     }
 }
 
 impl<T: ReaderAt> ReaderAt for &'_ mut T {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
         (**self).read_at(buf, offset)
     }
 }
 
 impl ReaderAt for &[u8] {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
         let skip = self.len().min(offset as usize);
         let data = &self[skip..];
@@ -205,6 +210,7 @@ impl<R> ReaderAt for std::io::Cursor<R>
 where
     R: AsRef<[u8]>,
 {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
         let data = self.get_ref().as_ref();
         data.read_at(buf, offset)
@@ -212,6 +218,7 @@ where
 }
 
 impl ReaderAt for Vec<u8> {
+    #[inline]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
         self.as_slice().read_at(buf, offset)
     }
