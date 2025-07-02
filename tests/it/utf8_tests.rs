@@ -1,3 +1,4 @@
+use rawzip::ZipEntryOptions;
 use rstest::rstest;
 use std::io::Write;
 
@@ -51,7 +52,9 @@ fn test_directory_utf8_flag(#[case] dirname: &str, #[case] should_have_utf8_flag
     let mut output = Vec::new();
     {
         let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
-        archive.new_dir(dirname).unwrap();
+        archive
+            .new_dir(dirname, ZipEntryOptions::default())
+            .unwrap();
         archive.finish().unwrap();
     }
 

@@ -3,7 +3,7 @@ use crate::errors::{Error, ErrorKind};
 use crate::mode::{msdos_mode_to_file_mode, unix_mode_to_file_mode, EntryMode};
 use crate::path::{RawPath, ZipFilePath};
 use crate::reader_at::{FileReader, MutexReader, ReaderAtExt};
-use crate::time::{extract_best_timestamp, ZipDateTime};
+use crate::time::{extract_best_timestamp, ZipDateTimeKind};
 use crate::utils::{le_u16, le_u32, le_u64};
 use crate::{EndOfCentralDirectoryRecordFixed, ReaderAt, ZipLocator};
 use std::io::{Read, Seek, Write};
@@ -1348,7 +1348,7 @@ impl<'a> ZipFileHeaderRecord<'a> {
     ///
     /// This method parses the extra field data to locate more accurate timestamps.
     #[inline]
-    pub fn last_modified(&self) -> ZipDateTime {
+    pub fn last_modified(&self) -> ZipDateTimeKind {
         extract_best_timestamp(self.extra_field, self.last_mod_time, self.last_mod_date)
     }
 

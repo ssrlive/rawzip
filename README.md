@@ -13,9 +13,9 @@ In its current state, rawzip should not be considered a general purpose Zip libr
 ## Features:
 
 - Pure Rust. Zero dependencies. Zero unsafe. Fast.
+- Read and write Zip and Zip64 files
 - Facilitates concurrent streaming decompression
 - Zero allocation and zero copy when reading from a byte slice
-- A simple Zip file writer
 
 ## Example
 

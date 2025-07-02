@@ -8,7 +8,7 @@ mod locator;
 mod mode;
 pub mod path;
 mod reader_at;
-mod time;
+pub mod time;
 mod utils;
 mod writer;
 
@@ -18,5 +18,4 @@ pub use errors::{Error, ErrorKind};
 pub use locator::*;
 pub use mode::EntryMode;
 pub use reader_at::{FileReader, ReaderAt};
-pub use time::{TimeZone, ZipDateTime};
 pub use writer::*;
