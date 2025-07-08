@@ -95,6 +95,25 @@ assert_eq!(&data[..], actual);
 Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
+## Security
+
+Zip files have a checkered past with maliciously crafted zips causing major headaches.
+
+By virtue of rawzip being a minimal library, several mitigations become the responsibility of the consuming application.
+
+What rawzip provides:
+
+- Memory safety
+- Structural validation of EOCD, central directory, and local file headers
+- An opt-in file path normalization to protect against zip slips
+- An opt-in CRC and size verification of inflated data
+
+What consumers must handle:
+
+- Zip bombs by implementing max compression ratios, max file sizes, and checks for overlapping file data
+- Symlink attacks with safe file system operations
+- Zip quines and potentially infinite recursion by limiting the amount of nesting
+
 ## Benchmarks
 
 ![bench-parsing.png](assets/rawzip-performance-comparison.png)
