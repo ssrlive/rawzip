@@ -724,7 +724,7 @@ fn needs_utf8_encoding(filename: &str) -> bool {
         // Forbid 0x7e (~) and 0x5c (\) since EUC-KR and Shift-JIS replace those
         // characters with localized currency and overline characters.
         // Also forbid control characters (< 0x20) and characters above 0x7d.
-        if code_point < 0x20 || code_point > 0x7d || code_point == 0x5c {
+        if !(0x20..=0x7d).contains(&code_point) || code_point == 0x5c {
             return true;
         }
     }
