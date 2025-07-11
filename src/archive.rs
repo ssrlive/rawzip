@@ -241,21 +241,11 @@ impl<'data> ZipSliceEntries<'data> {
 
         let file_header = ZipFileHeaderFixed::parse(self.entry_data)?;
         self.entry_data = &self.entry_data[ZipFileHeaderFixed::SIZE..];
-
-        if self.entry_data.len() < file_header.file_name_len as usize {
+        let Some((file_name, extra_field, file_comment, entry_data)) =
+            file_header.parse_variable_length(self.entry_data)
+        else {
             return Err(Error::from(ErrorKind::Eof));
-        }
-        let (file_name, rest) = self.entry_data.split_at(file_header.file_name_len as usize);
-
-        if rest.len() < file_header.extra_field_len as usize {
-            return Err(Error::from(ErrorKind::Eof));
-        }
-        let (extra_field, rest) = rest.split_at(file_header.extra_field_len as usize);
-
-        if rest.len() < file_header.file_comment_len as usize {
-            return Err(Error::from(ErrorKind::Eof));
-        }
-        let (file_comment, entry_data) = rest.split_at(file_header.file_comment_len as usize);
+        };
 
         let mut entry =
             ZipFileHeaderRecord::from_parts(file_header, file_name, extra_field, file_comment);
@@ -783,9 +773,9 @@ where
         self.pos += ZipFileHeaderFixed::SIZE;
 
         let variable_length = file_header.variable_length();
-
-        let remaining = self.end - self.pos;
-        if remaining < variable_length {
+        if self.pos + variable_length > self.end {
+            // Need to read more data
+            let remaining = self.end - self.pos;
             self.buffer.copy_within(self.pos..self.end, 0);
             let max_read = ((self.central_dir_end_pos - self.offset) as usize)
                 .min(self.buffer.len() - remaining);
@@ -799,7 +789,12 @@ where
             self.end = remaining + read;
         }
 
-        let mut file_header = ZipFileHeaderRecord::from_data(file_header, &self.buffer[self.pos..]);
+        let data = &self.buffer[self.pos..self.end];
+        let (file_name, extra_field, file_comment, _) = file_header
+            .parse_variable_length(data)
+            .expect("variable length precheck failed");
+        let mut file_header =
+            ZipFileHeaderRecord::from_parts(file_header, file_name, extra_field, file_comment);
         file_header.local_header_offset += self.base_offset;
         self.pos += variable_length;
         Ok(Some(file_header))
@@ -1360,15 +1355,6 @@ impl<'a> ZipFileHeaderRecord<'a> {
         result
     }
 
-    fn from_data(header: ZipFileHeaderFixed, data: &'a [u8]) -> Self {
-        let file_name = &data[..header.file_name_len as usize];
-        let data = &data[header.file_name_len as usize..];
-        let extra_field = &data[..header.extra_field_len as usize];
-        let data = &data[header.extra_field_len as usize..];
-        let file_comment = &data[..header.file_comment_len as usize];
-        Self::from_parts(header, file_name, extra_field, file_comment)
-    }
-
     /// Describes if the file is a directory.
     ///
     /// See [`ZipFilePath::is_dir`] for more information.
@@ -1613,6 +1599,13 @@ impl ZipFileHeaderFixed {
     }
 }
 
+type VariableFields<'a> = (
+    &'a [u8], // file_name
+    &'a [u8], // extra_field
+    &'a [u8], // file_comment
+    &'a [u8], // rest of the data
+);
+
 impl ZipFileHeaderFixed {
     const SIZE: usize = 46;
 
@@ -1650,6 +1643,26 @@ impl ZipFileHeaderFixed {
         }
 
         Ok(result)
+    }
+
+    #[inline]
+    pub fn parse_variable_length<'a>(&self, data: &'a [u8]) -> Option<VariableFields<'a>> {
+        if data.len() < self.file_name_len as usize {
+            return None;
+        }
+        let (file_name, rest) = data.split_at(self.file_name_len as usize);
+
+        if rest.len() < self.extra_field_len as usize {
+            return None;
+        }
+        let (extra_field, rest) = rest.split_at(self.extra_field_len as usize);
+
+        if rest.len() < self.file_comment_len as usize {
+            return None;
+        }
+        let (file_comment, rest) = rest.split_at(self.file_comment_len as usize);
+
+        Some((file_name, extra_field, file_comment, rest))
     }
 }
 
