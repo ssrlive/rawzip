@@ -52,7 +52,8 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
     /// Returns an iterator over the entries in the central directory of the archive.
     pub fn entries(&self) -> ZipSliceEntries {
         let data = self.data.as_ref();
-        let entry_data = &data[(self.eocd.offset() as usize).min(data.len())..];
+        let entry_data =
+            &data[(self.eocd.offset() as usize).min(data.len())..self.eocd.end_position() as usize];
         ZipSliceEntries {
             entry_data,
             base_offset: self.eocd.base_offset(),
@@ -234,9 +235,11 @@ impl<'data> ZipSliceEntries<'data> {
     /// Yield the next zip file entry in the central directory if there is any
     #[inline]
     pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord<'data>>, Error> {
-        let Ok(file_header) = ZipFileHeaderFixed::parse(self.entry_data) else {
+        if self.entry_data.is_empty() {
             return Ok(None);
-        };
+        }
+
+        let file_header = ZipFileHeaderFixed::parse(self.entry_data)?;
         self.entry_data = &self.entry_data[ZipFileHeaderFixed::SIZE..];
 
         if self.entry_data.len() < file_header.file_name_len as usize {
@@ -385,11 +388,11 @@ impl<R> ZipArchive<R> {
         ZipEntries {
             buffer,
             archive: self,
-            entries_yielded: 0,
             pos: 0,
             end: 0,
             offset: self.eocd.offset(),
             base_offset: self.eocd.base_offset(),
+            central_dir_end_pos: self.eocd.end_position(),
         }
     }
 
@@ -701,6 +704,16 @@ impl EndOfCentralDirectory {
         }
     }
 
+    /// end position of the central directory
+    ///
+    /// Returns the position where the central directory ends, which is where
+    /// the EOCD record begins. This uses the actual discovered position from
+    /// the locator rather than trusting the potentially untrusted size field.
+    #[inline]
+    fn end_position(&self) -> u64 {
+        self.stream_pos
+    }
+
     /// offset of the start of the central directory
     #[inline]
     fn offset(&self) -> u64 {
@@ -729,11 +742,11 @@ impl EndOfCentralDirectory {
 pub struct ZipEntries<'archive, 'buf, R> {
     buffer: &'buf mut [u8],
     archive: &'archive ZipArchive<R>,
-    entries_yielded: u64,
     pos: usize,
     end: usize,
     offset: u64,
     base_offset: u64,
+    central_dir_end_pos: u64,
 }
 
 impl<R> ZipEntries<'_, '_, R>
@@ -746,32 +759,27 @@ where
     /// buffer to parse entry headers.
     #[inline]
     pub fn next_entry(&mut self) -> Result<Option<ZipFileHeaderRecord>, Error> {
-        let file_header = loop {
-            let data = &self.buffer[self.pos..self.end];
-            match ZipFileHeaderFixed::parse(data) {
-                Ok(file_header) => break file_header,
-                Err(_) if self.entries_yielded == self.archive.entries_hint() => {
-                    return Ok(None);
-                }
-                Err(e) if e.is_eof() => {
-                    let remaining = data.len();
-                    self.buffer.copy_within(self.pos..self.end, 0);
-                    let read = self.archive.reader.try_read_at_least_at(
-                        &mut self.buffer[remaining..],
-                        ZipFileHeaderFixed::SIZE,
-                        self.offset,
-                    )?;
-                    self.offset += read as u64;
-                    self.pos = 0;
-                    self.end = remaining + read;
-                    if self.end < ZipFileHeaderFixed::SIZE {
-                        return Err(e);
-                    }
-                }
-                Err(e) => return Err(e),
+        if self.pos + ZipFileHeaderFixed::SIZE >= self.end {
+            if self.offset >= self.central_dir_end_pos {
+                return Ok(None);
             }
-        };
 
+            let remaining = self.end - self.pos;
+            self.buffer.copy_within(self.pos..self.end, 0);
+            let max_read = ((self.central_dir_end_pos - self.offset) as usize)
+                .min(self.buffer.len() - remaining);
+            let read = self.archive.reader.read_at_least_at(
+                &mut self.buffer[remaining..][..max_read],
+                ZipFileHeaderFixed::SIZE,
+                self.offset,
+            )?;
+            self.offset += read as u64;
+            self.pos = 0;
+            self.end = remaining + read;
+        }
+
+        let data = &self.buffer[self.pos..self.end];
+        let file_header = ZipFileHeaderFixed::parse(data)?;
         self.pos += ZipFileHeaderFixed::SIZE;
 
         let variable_length = file_header.variable_length();
@@ -779,8 +787,10 @@ where
         let remaining = self.end - self.pos;
         if remaining < variable_length {
             self.buffer.copy_within(self.pos..self.end, 0);
+            let max_read = ((self.central_dir_end_pos - self.offset) as usize)
+                .min(self.buffer.len() - remaining);
             let read = self.archive.reader.read_at_least_at(
-                &mut self.buffer[remaining..],
+                &mut self.buffer[remaining..][..max_read],
                 variable_length - remaining,
                 self.offset,
             )?;
@@ -792,7 +802,6 @@ where
         let mut file_header = ZipFileHeaderRecord::from_data(file_header, &self.buffer[self.pos..]);
         file_header.local_header_offset += self.base_offset;
         self.pos += variable_length;
-        self.entries_yielded += 1;
         Ok(Some(file_header))
     }
 }
