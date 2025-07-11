@@ -1,14 +1,12 @@
 use crate::crc::crc32_chunk;
 use crate::errors::{Error, ErrorKind};
 use crate::mode::{msdos_mode_to_file_mode, unix_mode_to_file_mode, EntryMode};
+use crate::path::{RawPath, ZipFilePath};
 use crate::reader_at::{FileReader, MutexReader, ReaderAtExt};
 use crate::time::{extract_best_timestamp, ZipDateTime};
 use crate::utils::{le_u16, le_u32, le_u64};
 use crate::{EndOfCentralDirectoryRecordFixed, ReaderAt, ZipLocator};
-use std::{
-    borrow::Cow,
-    io::{Read, Seek, Write},
-};
+use std::io::{Read, Seek, Write};
 
 pub(crate) const END_OF_CENTRAL_DIR_SIGNATURE64: u32 = 0x06064b50;
 pub(crate) const END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE: u32 = 0x07064b50;
@@ -37,7 +35,7 @@ pub const RECOMMENDED_BUFFER_SIZE: usize = 1 << 16;
 ///     println!("Found {} entries.", archive.entries_hint());
 ///     for entry_result in archive.entries() {
 ///         let entry = entry_result?;
-///         println!("File: {}", entry.file_safe_path()?);
+///         println!("File: {}", entry.file_path().try_normalize()?.as_ref());
 ///     }
 ///     Ok(())
 /// }
@@ -1047,177 +1045,6 @@ impl ZipString {
     }
 }
 
-/// Represents a file path within a Zip archive, as a borrowed byte slice.
-///
-/// File paths in Zip archives are not guaranteed to be UTF-8, and may contain
-/// relative paths that try and escape the zip or absolute paths.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ZipFilePath<'a>(ZipStr<'a>);
-
-impl<'a> ZipFilePath<'a> {
-    /// Creates a Zip file path from a byte slice.
-    #[inline]
-    pub fn new(data: &'a [u8]) -> Self {
-        Self(ZipStr::new(data))
-    }
-
-    /// Return the raw bytes of the Zip file path.
-    ///
-    /// **WARNING**: this may contain be an absolute path or contain a file path
-    /// capable of zip slips. Prefer [`normalize`](ZipFilePath::normalize).
-    #[inline]
-    pub fn as_bytes(&self) -> &'a [u8] {
-        self.0.as_bytes()
-    }
-
-    fn normalize_alloc(s: &str) -> String {
-        // 4.4.17.1 All slashes MUST be forward slashes '/'
-        let s = s.replace('\\', "/");
-
-        // 4.4.17.1 MUST NOT contain a drive or device letter
-        let s = s.split(':').next_back().unwrap_or_default();
-
-        // resolve path components
-        let splits = s.split('/');
-        let mut result = String::new();
-        for split in splits {
-            if split.is_empty() || split == "." {
-                continue;
-            }
-
-            if split == ".." {
-                let last = result.rfind('/');
-                result.truncate(last.unwrap_or(0));
-                continue;
-            }
-
-            if !result.is_empty() {
-                result.push('/');
-            }
-
-            result.push_str(split);
-        }
-
-        result
-    }
-
-    /// Returns true if the file path is a directory.
-    ///
-    /// This is determined by the file path ending in a slash,
-    /// but it's a common convention as otherwise it would be an invalid file.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use rawzip::ZipFilePath;
-    /// let path = ZipFilePath::new(b"dir/");
-    /// assert!(path.is_dir());
-    ///
-    /// let path = ZipFilePath::new(b"dir/file.txt");
-    /// assert!(!path.is_dir());
-    /// ```
-    #[inline]
-    pub fn is_dir(&self) -> bool {
-        self.0.as_bytes().last() == Some(&b'/')
-    }
-
-    /// Normalizes the Zip file path.
-    ///
-    /// The normalization process includes:
-    /// - Attempting to interpret the path as UTF-8.
-    /// - Replacing backslashes (`\`) with forward slashes (`/`).
-    /// - Removing redundant slashes (e.g., `//`).
-    /// - Resolving relative path components (`.` and `..`).
-    /// - Stripping leading slashes and parent directory traversals that would
-    ///   escape the archive's root (e.g., `/foo` becomes `foo`, `../foo`
-    ///   becomes `foo`).
-    ///
-    /// In the case where no allocation needs to occur when normalizing, an
-    /// original reference to the data is returned.
-    ///
-    /// # Examples
-    ///
-    /// Basic path normalization:
-    /// ```
-    /// # use rawzip::ZipFilePath;
-    /// let path = ZipFilePath::new(b"dir/test.txt");
-    /// assert_eq!(path.normalize().unwrap(), "dir/test.txt");
-    ///
-    /// // Converts backslashes to forward slashes
-    /// let path = ZipFilePath::new(b"dir\\test.txt");
-    /// assert_eq!(path.normalize().unwrap(), "dir/test.txt");
-    ///
-    /// // Removes redundant slashes
-    /// let path = ZipFilePath::new(b"dir//test.txt");
-    /// assert_eq!(path.normalize().unwrap(), "dir/test.txt");
-    /// ```
-    ///
-    /// Handling relative and absolute paths:
-    /// ```
-    /// # use rawzip::ZipFilePath;
-    /// // Removes leading slashes
-    /// let path = ZipFilePath::new(b"/test.txt");
-    /// assert_eq!(path.normalize().unwrap(), "test.txt");
-    ///
-    /// // Resolves current directory references
-    /// let path = ZipFilePath::new(b"./test.txt");
-    /// assert_eq!(path.normalize().unwrap(), "test.txt");
-    ///
-    /// // Resolves parent directory references
-    /// let path = ZipFilePath::new(b"dir/../test.txt");
-    /// assert_eq!(path.normalize().unwrap(), "test.txt");
-    ///
-    /// let path = ZipFilePath::new(b"a/b/c/d/../../test.txt");
-    /// assert_eq!(path.normalize().unwrap(), "a/b/test.txt");
-    ///
-    /// let path = ZipFilePath::new(b"dir/");
-    /// assert_eq!(path.normalize().unwrap(), "dir/");
-    /// ```
-    ///
-    /// Invalid paths:
-    /// ```
-    /// # use rawzip::ZipFilePath;
-    /// // Invalid UTF-8 sequences result in an error
-    /// let path = ZipFilePath::new(&[0xFF]);
-    /// assert!(path.normalize().is_err());
-    ///
-    /// let path = ZipFilePath::new(&[b't', b'e', b's', b't', 0xFF]);
-    /// assert!(path.normalize().is_err());
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// - if the file path is not valid UTF-8.
-    ///
-    /// [Note that zip file names aren't always UTF-8][1]
-    ///
-    /// [1]: https://fasterthanli.me/articles/the-case-for-sans-io#character-encoding-differences
-    pub fn normalize(&self) -> Result<Cow<str>, Error> {
-        let mut name = std::str::from_utf8(self.as_bytes()).map_err(Error::utf8)?;
-        let mut last = 0;
-        for &c in name.as_bytes() {
-            if matches!(
-                (c, last),
-                (b'\\', _) | (b'/', b'/') | (b'.', b'.') | (b'.', b'/') | (b':', _)
-            ) {
-                // slow path: intrusive string manipulations required
-                return Ok(Cow::Owned(Self::normalize_alloc(name)));
-            }
-            last = c;
-        }
-
-        loop {
-            // Fast path: before we trim, do a quick check if they are even necessary.
-            name = match name.as_bytes() {
-                [b'.', b'.', b'/', ..] => name.trim_start_matches("../"),
-                [b'.', b'/', ..] => name.trim_start_matches("./"),
-                [b'/', ..] => name.trim_start_matches('/'),
-                _ => return Ok(Cow::Borrowed(name)),
-            }
-        }
-    }
-}
-
 /// Represents a record from the Zip archive's central directory for a single
 /// file
 ///
@@ -1245,7 +1072,7 @@ pub struct ZipFileHeaderRecord<'a> {
     internal_file_attrs: u16,
     external_file_attrs: u32,
     local_header_offset: u64,
-    file_name: ZipFilePath<'a>,
+    file_name: ZipFilePath<RawPath<'a>>,
     extra_field: &'a [u8],
     file_comment: ZipStr<'a>,
     is_zip64: bool,
@@ -1277,7 +1104,7 @@ impl<'a> ZipFileHeaderRecord<'a> {
             internal_file_attrs: header.internal_file_attrs,
             external_file_attrs: header.external_file_attrs,
             local_header_offset: u64::from(header.local_header_offset),
-            file_name: ZipFilePath::new(file_name),
+            file_name: ZipFilePath::from_bytes(file_name),
             extra_field,
             file_comment: ZipStr::new(file_comment),
             is_zip64: false,
@@ -1422,21 +1249,40 @@ impl<'a> ZipFileHeaderRecord<'a> {
         self.compression_method.as_method()
     }
 
-    /// Return the sanitized file path.
+    /// Returns the file path in its raw form.
     ///
-    /// See [`ZipFilePath::normalize`] for more information.
-    #[inline]
-    pub fn file_safe_path(&self) -> Result<Cow<str>, Error> {
-        self.file_name.normalize()
-    }
-
-    /// Return the raw bytes of the file path
+    /// # Safety
     ///
-    /// **WARNING**: this may contain be an absolute path or contain a file path
-    /// capable of zip slips. Prefer [`Self::file_safe_path`].
+    /// The raw path may contain unsafe components like:
+    /// - Absolute paths (`/etc/passwd`)
+    /// - Directory traversal (`../../../etc/passwd`)
+    /// - Invalid UTF-8 sequences
+    ///
+    /// # Example
+    /// ```rust
+    /// # use rawzip::ZipArchive;
+    /// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let data = include_bytes!("../assets/test.zip");
+    /// # let archive = ZipArchive::from_slice(data)?;
+    /// # let mut entries = archive.entries();
+    /// # let entry = entries.next_entry()?.unwrap();
+    /// // Get raw path (potentially unsafe)
+    /// let raw_path = entry.file_path();
+    ///
+    /// // Convert to safe path
+    /// let safe_path = raw_path.try_normalize()?;
+    /// println!("Safe path: {}", safe_path.as_ref());
+    ///
+    /// // Check if it's a directory
+    /// if safe_path.is_dir() {
+    ///     println!("This is a directory");
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
-    pub fn file_raw_path(&self) -> &[u8] {
-        self.file_name.as_bytes()
+    pub fn file_path(&self) -> ZipFilePath<RawPath<'a>> {
+        self.file_name
     }
 
     /// Returns the last modification date and time.
@@ -1647,39 +1493,7 @@ impl ZipFileHeaderFixed {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rstest::rstest;
     use std::io::Cursor;
-
-    #[rstest]
-    #[case(b"test.txt", "test.txt")]
-    #[case(b"dir/test.txt", "dir/test.txt")]
-    #[case(b"dir\\test.txt", "dir/test.txt")]
-    #[case(b"dir//test.txt", "dir/test.txt")]
-    #[case(b"/test.txt", "test.txt")]
-    #[case(b"../test.txt", "test.txt")]
-    #[case(b"dir/../test.txt", "test.txt")]
-    #[case(b"./test.txt", "test.txt")]
-    #[case(b"dir/./test.txt", "dir/test.txt")]
-    #[case(b"dir/./../test.txt", "test.txt")]
-    #[case(b"dir/sub/../test.txt", "dir/test.txt")]
-    #[case(b"dir/../../test.txt", "test.txt")]
-    #[case(b"../../../test.txt", "test.txt")]
-    #[case(b"a/b/../../test.txt", "test.txt")]
-    #[case(b"a/b/c/../../../test.txt", "test.txt")]
-    #[case(b"a/b/c/d/../../test.txt", "a/b/test.txt")]
-    #[case(b"C:\\hello\\test.txt", "hello/test.txt")]
-    #[case(b"C:/hello\\test.txt", "hello/test.txt")]
-    #[case(b"C:/hello/test.txt", "hello/test.txt")]
-    fn test_zip_path_normalized(#[case] input: &[u8], #[case] expected: &str) {
-        assert_eq!(ZipFilePath::new(input).normalize().unwrap(), expected);
-    }
-
-    #[rstest]
-    #[case(&[0xFF])]
-    #[case(&[b't', b'e', b's', b't', 0xFF])]
-    fn test_zip_path_normalized_invalid_utf8(#[case] input: &[u8]) {
-        assert!(ZipFilePath::new(input).normalize().is_err());
-    }
 
     #[test]
     pub fn blank_zip_archive() {

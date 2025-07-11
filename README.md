@@ -66,9 +66,9 @@ let mut entries = archive.entries();
 // Get the first (and only) entry in the archive.
 let entry = entries.next_entry()?.unwrap();
 
-// While we can access the raw bytes of the file name, let's use the safe path
+// While we can access the raw bytes of the file name, let's use the normalized path
 // for demonstration purposes.
-assert_eq!(entry.file_safe_path()?, "file.txt");
+assert_eq!(entry.file_path().try_normalize()?.as_ref(), "file.txt");
 
 // Assert the compression method.
 assert_eq!(entry.compression_method(), rawzip::CompressionMethod::Deflate);

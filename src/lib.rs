@@ -6,6 +6,7 @@ mod crc;
 mod errors;
 mod locator;
 mod mode;
+pub mod path;
 mod reader_at;
 mod time;
 mod utils;

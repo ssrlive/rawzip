@@ -31,7 +31,7 @@ fn fuzz_reader_zip_archive(data: &[u8]) -> Result<(), rawzip::Error> {
             continue;
         };
 
-        let _name = entry.file_safe_path();
+        let _name = entry.file_path().try_normalize();
         let _date = entry.last_modified();
         let position = entry.wayfinder();
         let Ok(ent) = archive.get_entry(position) else {
@@ -72,7 +72,7 @@ fn fuzz_slice_zip_archive(data: &[u8]) -> Result<(), rawzip::Error> {
             continue;
         };
 
-        let _name = entry.file_safe_path();
+        let _name = entry.file_path().try_normalize();
         let _date = entry.last_modified();
         let position = entry.wayfinder();
         let Ok(ent) = archive.get_entry(position) else {
