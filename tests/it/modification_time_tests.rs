@@ -1,6 +1,6 @@
 use rawzip::{
     time::{LocalDateTime, UtcDateTime, ZipDateTimeKind},
-    ZipArchive, ZipArchiveWriter, ZipDataWriter, ZipEntryOptions,
+    ZipArchive, ZipArchiveWriter, ZipDataWriter,
 };
 use std::io::Write;
 
@@ -13,8 +13,11 @@ fn test_modification_time_roundtrip_file() {
     // Create archive with modification time
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
-        let options = ZipEntryOptions::default().modification_time(datetime);
-        let mut file = archive.new_file("test.txt", options).unwrap();
+        let mut file = archive
+            .new_file("test.txt")
+            .last_modified(datetime)
+            .create()
+            .unwrap();
         let mut writer = ZipDataWriter::new(&mut file);
         writer.write_all(b"Hello, world!").unwrap();
         let (_, descriptor) = writer.finish().unwrap();
@@ -44,8 +47,11 @@ fn test_modification_time_roundtrip_directory() {
     // Create archive with directory modification time
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
-        let options = ZipEntryOptions::default().modification_time(datetime);
-        archive.new_dir("test_dir/", options).unwrap();
+        archive
+            .new_dir("test_dir/")
+            .last_modified(datetime)
+            .create()
+            .unwrap();
         archive.finish().unwrap();
     }
 
@@ -71,8 +77,7 @@ fn test_no_modification_time_defaults_to_zero() {
     // Create archive without modification time
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
-        let options = ZipEntryOptions::default();
-        let mut file = archive.new_file("test.txt", options).unwrap();
+        let mut file = archive.new_file("test.txt").create().unwrap();
         let mut writer = ZipDataWriter::new(&mut file);
         writer.write_all(b"Hello, world!").unwrap();
         let (_, descriptor) = writer.finish().unwrap();
@@ -106,8 +111,11 @@ fn test_extended_timestamp_format_present() {
     // Create archive with modification time
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
-        let options = ZipEntryOptions::default().modification_time(datetime);
-        let mut file = archive.new_file("test.txt", options).unwrap();
+        let mut file = archive
+            .new_file("test.txt")
+            .last_modified(datetime)
+            .create()
+            .unwrap();
         let mut writer = ZipDataWriter::new(&mut file);
         writer.write_all(b"Hello, world!").unwrap();
         let (_, descriptor) = writer.finish().unwrap();
@@ -134,8 +142,7 @@ fn test_no_extended_timestamp_without_modification_time() {
     // Create archive without modification time
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
-        let options = ZipEntryOptions::default();
-        let mut file = archive.new_file("test.txt", options).unwrap();
+        let mut file = archive.new_file("test.txt").create().unwrap();
         let mut writer = ZipDataWriter::new(&mut file);
         writer.write_all(b"Hello, world!").unwrap();
         let (_, descriptor) = writer.finish().unwrap();
@@ -162,8 +169,11 @@ fn test_timestamp_before_dos_range() {
     // Create archive with pre-1980 timestamp
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
-        let options = ZipEntryOptions::default().modification_time(datetime);
-        let mut file = archive.new_file("test.txt", options).unwrap();
+        let mut file = archive
+            .new_file("test.txt")
+            .last_modified(datetime)
+            .create()
+            .unwrap();
         let mut writer = ZipDataWriter::new(&mut file);
         writer.write_all(b"Hello, world!").unwrap();
         let (_, descriptor) = writer.finish().unwrap();
@@ -196,16 +206,22 @@ fn test_multiple_files_different_timestamps() {
         let mut archive = ZipArchiveWriter::new(&mut output);
 
         // First file
-        let options1 = ZipEntryOptions::default().modification_time(datetime1);
-        let mut file1 = archive.new_file("file1.txt", options1).unwrap();
+        let mut file1 = archive
+            .new_file("file1.txt")
+            .last_modified(datetime1)
+            .create()
+            .unwrap();
         let mut writer1 = ZipDataWriter::new(&mut file1);
         writer1.write_all(b"File 1").unwrap();
         let (_, descriptor1) = writer1.finish().unwrap();
         file1.finish(descriptor1).unwrap();
 
         // Second file
-        let options2 = ZipEntryOptions::default().modification_time(datetime2);
-        let mut file2 = archive.new_file("file2.txt", options2).unwrap();
+        let mut file2 = archive
+            .new_file("file2.txt")
+            .last_modified(datetime2)
+            .create()
+            .unwrap();
         let mut writer2 = ZipDataWriter::new(&mut file2);
         writer2.write_all(b"File 2").unwrap();
         let (_, descriptor2) = writer2.finish().unwrap();
@@ -246,10 +262,13 @@ fn test_new_dir_with_options() {
     // Create archive with directory using options
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
-        let options = ZipEntryOptions::default().modification_time(datetime);
 
         // This should compile and work (breaking change)
-        archive.new_dir("christmas/", options).unwrap();
+        archive
+            .new_dir("christmas/")
+            .last_modified(datetime)
+            .create()
+            .unwrap();
 
         archive.finish().unwrap();
     }
@@ -287,8 +306,10 @@ fn test_timezone_api_and_validation() {
     assert_eq!(utc_time.timezone(), rawzip::time::TimeZone::Utc);
     assert_eq!(local_time.timezone(), rawzip::time::TimeZone::Local);
 
-    // Test that only UTC timestamps can be used for modification_time
-    let _options = ZipEntryOptions::default().modification_time(utc_time);
+    // Test that only UTC timestamps can be used for last_modified
+    let mut output = Vec::new();
+    let mut archive = ZipArchiveWriter::new(&mut output);
+    let _builder = archive.new_file("test.txt").last_modified(utc_time);
 
     // Test date validation
     assert!(UtcDateTime::from_components(2023, 2, 30, 0, 0, 0, 0).is_none()); // Feb 30th

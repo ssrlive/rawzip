@@ -780,9 +780,7 @@ fn test_read_what_we_write_slice(data: Vec<u8>) {
     let mut output = Vec::new();
     {
         let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
-        let mut file = archive
-            .new_file("file.txt", rawzip::ZipEntryOptions::default())
-            .unwrap();
+        let mut file = archive.new_file("file.txt").create().unwrap();
         let mut writer = rawzip::ZipDataWriter::new(&mut file);
         std::io::copy(&mut Cursor::new(&data), &mut writer).unwrap();
         let (_, descriptor) = writer.finish().unwrap();
