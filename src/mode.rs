@@ -1,3 +1,10 @@
+/// ZIP creator system constants used in version_made_by field
+pub(crate) const CREATOR_UNIX: u16 = 3;
+pub(crate) const CREATOR_MACOS: u16 = 19;
+pub(crate) const CREATOR_NTFS: u16 = 11;
+pub(crate) const CREATOR_VFAT: u16 = 14;
+pub(crate) const CREATOR_FAT: u16 = 0;
+
 /// File mode information for a given zip file entry.
 ///
 /// This represents Unix-style file permissions and type information.
@@ -6,22 +13,26 @@ pub struct EntryMode(u32);
 
 impl EntryMode {
     /// Creates a new Mode from a raw mode value.
-    pub(crate) fn new(value: u32) -> Self {
+    #[must_use]
+    pub(crate) const fn new(value: u32) -> Self {
         Self(value)
     }
 
     /// Returns the raw mode value
-    pub fn value(&self) -> u32 {
+    #[must_use]
+    pub const fn value(&self) -> u32 {
         self.0
     }
 
     /// Returns true if this is a symbolic link.
-    pub fn is_symlink(&self) -> bool {
+    #[must_use]
+    pub const fn is_symlink(&self) -> bool {
         self.0 & S_IFMT == S_IFLNK
     }
 
     /// Returns the Unix permission bits (e.g., 0o755).
-    pub fn permissions(&self) -> u32 {
+    #[must_use]
+    pub const fn permissions(&self) -> u32 {
         self.0 & 0o777
     }
 }

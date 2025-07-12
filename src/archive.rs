@@ -1,6 +1,9 @@
 use crate::crc::crc32_chunk;
 use crate::errors::{Error, ErrorKind};
-use crate::mode::{msdos_mode_to_file_mode, unix_mode_to_file_mode, EntryMode};
+use crate::mode::{
+    msdos_mode_to_file_mode, unix_mode_to_file_mode, EntryMode, CREATOR_FAT, CREATOR_MACOS,
+    CREATOR_NTFS, CREATOR_UNIX, CREATOR_VFAT,
+};
 use crate::path::{RawPath, ZipFilePath};
 use crate::reader_at::{FileReader, MutexReader, ReaderAtExt};
 use crate::time::{extract_best_timestamp, ZipDateTimeKind};
@@ -1357,17 +1360,13 @@ impl<'a> ZipFileHeaderRecord<'a> {
     pub fn mode(&self) -> EntryMode {
         let creator_version = self.version_made_by >> 8;
 
-        const UNIX: u16 = 3;
-        const MACOS: u16 = 19;
-        const NTFS: u16 = 11;
-        const VFAT: u16 = 14;
-        const FAT: u16 = 0;
-
         let mut mode = match creator_version {
             // Unix and macOS
-            UNIX | MACOS => unix_mode_to_file_mode(self.external_file_attrs >> 16),
+            CREATOR_UNIX | CREATOR_MACOS => unix_mode_to_file_mode(self.external_file_attrs >> 16),
             // NTFS, VFAT, FAT
-            NTFS | VFAT | FAT => msdos_mode_to_file_mode(self.external_file_attrs),
+            CREATOR_NTFS | CREATOR_VFAT | CREATOR_FAT => {
+                msdos_mode_to_file_mode(self.external_file_attrs)
+            }
             // default to basic permissions
             _ => 0o644,
         };
