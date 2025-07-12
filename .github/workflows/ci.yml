@@ -44,7 +44,7 @@ jobs:
       uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-    - run: cargo build --verbose
+    - run: cargo build --all-targets --verbose
     - run: cargo doc --verbose
     - run: cargo test --verbose --all
 
@@ -78,7 +78,7 @@ jobs:
       uses: actions/checkout@v4
     - uses: cargo-bins/cargo-binstall@main
     - run: cargo binstall cross@${CROSS_VERSION}
-    - run: cross build --verbose --target ${{ matrix.target }}
+    - run: cross build --all-targets --verbose --target ${{ matrix.target }}
     - run: cross test --verbose --target ${{ matrix.target }}
 
   testbench:
