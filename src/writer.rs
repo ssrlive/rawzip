@@ -129,6 +129,8 @@ where
     W: Write,
 {
     /// Sets the compression method for the file entry.
+    #[must_use]
+    #[inline]
     pub fn compression_method(mut self, compression_method: CompressionMethod) -> Self {
         self.compression_method = compression_method;
         self
@@ -137,6 +139,8 @@ where
     /// Sets the modification time for the file entry.
     ///
     /// Only accepts UTC timestamps to ensure Extended Timestamp fields are written correctly.
+    #[must_use]
+    #[inline]
     pub fn last_modified(mut self, modification_time: UtcDateTime) -> Self {
         self.modification_time = Some(modification_time);
         self
@@ -151,6 +155,8 @@ where
     ///
     /// When set, the archive will be created with Unix-compatible "version made by" field
     /// to ensure proper interpretation of the permissions by zip readers.
+    #[must_use]
+    #[inline]
     pub fn unix_permissions(mut self, permissions: u32) -> Self {
         self.unix_permissions = Some(permissions);
         self
@@ -183,6 +189,8 @@ where
     /// Sets the modification time for the directory entry.
     ///
     /// See [`ZipFileBuilder::last_modified`] for details.
+    #[must_use]
+    #[inline]
     pub fn last_modified(mut self, modification_time: UtcDateTime) -> Self {
         self.modification_time = Some(modification_time);
         self
@@ -191,6 +199,8 @@ where
     /// Sets the Unix permissions for the directory entry.
     ///
     /// See [`ZipFileBuilder::unix_permissions`] for details.
+    #[must_use]
+    #[inline]
     pub fn unix_permissions(mut self, permissions: u32) -> Self {
         self.unix_permissions = Some(permissions);
         self
