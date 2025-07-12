@@ -86,7 +86,7 @@ impl Default for ZipArchiveWriterBuilder {
 ///
 /// let mut output = std::io::Cursor::new(Vec::new());
 /// let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
-/// let mut file = archive.new_file("file.txt", rawzip::ZipEntryOptions::default()).unwrap();
+/// let mut file = archive.new_file("file.txt").create().unwrap();
 /// let mut writer = rawzip::ZipDataWriter::new(&mut file);
 /// writer.write_all(b"Hello, world!").unwrap();
 /// let (_, output) = writer.finish().unwrap();
@@ -111,6 +111,99 @@ impl<W> ZipArchiveWriter<W> {
     /// Creates a new `ZipArchiveWriter` that writes to `writer`.
     pub fn new(writer: W) -> Self {
         ZipArchiveWriterBuilder::new().build(writer)
+    }
+}
+
+/// A builder for creating a new file entry in a ZIP archive.
+#[derive(Debug)]
+pub struct ZipFileBuilder<'a, W> {
+    archive: &'a mut ZipArchiveWriter<W>,
+    name: &'a str,
+    compression_method: CompressionMethod,
+    modification_time: Option<UtcDateTime>,
+    unix_permissions: Option<u32>,
+}
+
+impl<'a, W> ZipFileBuilder<'a, W>
+where
+    W: Write,
+{
+    /// Sets the compression method for the file entry.
+    pub fn compression_method(mut self, compression_method: CompressionMethod) -> Self {
+        self.compression_method = compression_method;
+        self
+    }
+
+    /// Sets the modification time for the file entry.
+    ///
+    /// Only accepts UTC timestamps to ensure Extended Timestamp fields are written correctly.
+    pub fn last_modified(mut self, modification_time: UtcDateTime) -> Self {
+        self.modification_time = Some(modification_time);
+        self
+    }
+
+    /// Sets the Unix permissions for the file entry.
+    ///
+    /// Accepts either:
+    /// - Basic permission bits (e.g., 0o644 for rw-r--r--, 0o755 for rwxr-xr-x)
+    /// - Full Unix mode including file type (e.g., 0o100644 for regular file, 0o040755 for directory)
+    /// - Special permission bits are preserved (SUID: 0o4000, SGID: 0o2000, sticky: 0o1000)
+    ///
+    /// When set, the archive will be created with Unix-compatible "version made by" field
+    /// to ensure proper interpretation of the permissions by zip readers.
+    pub fn unix_permissions(mut self, permissions: u32) -> Self {
+        self.unix_permissions = Some(permissions);
+        self
+    }
+
+    /// Creates the file entry and returns a writer for the file's content.
+    pub fn create(self) -> Result<ZipEntryWriter<'a, W>, Error> {
+        let options = ZipEntryOptions {
+            compression_method: self.compression_method,
+            modification_time: self.modification_time,
+            unix_permissions: self.unix_permissions,
+        };
+        self.archive.new_file_with_options(self.name, options)
+    }
+}
+
+/// A builder for creating a new directory entry in a ZIP archive.
+#[derive(Debug)]
+pub struct ZipDirBuilder<'a, W> {
+    archive: &'a mut ZipArchiveWriter<W>,
+    name: &'a str,
+    modification_time: Option<UtcDateTime>,
+    unix_permissions: Option<u32>,
+}
+
+impl<W> ZipDirBuilder<'_, W>
+where
+    W: Write,
+{
+    /// Sets the modification time for the directory entry.
+    ///
+    /// See [`ZipFileBuilder::last_modified`] for details.
+    pub fn last_modified(mut self, modification_time: UtcDateTime) -> Self {
+        self.modification_time = Some(modification_time);
+        self
+    }
+
+    /// Sets the Unix permissions for the directory entry.
+    ///
+    /// See [`ZipFileBuilder::unix_permissions`] for details.
+    pub fn unix_permissions(mut self, permissions: u32) -> Self {
+        self.unix_permissions = Some(permissions);
+        self
+    }
+
+    /// Creates the directory entry.
+    pub fn create(self) -> Result<(), Error> {
+        let options = ZipEntryOptions {
+            compression_method: CompressionMethod::Store, // Directories always use Store
+            modification_time: self.modification_time,
+            unix_permissions: self.unix_permissions,
+        };
+        self.archive.new_dir_with_options(self.name, options)
     }
 }
 
@@ -157,10 +250,35 @@ where
         Ok(())
     }
 
-    /// Adds a new directory to the archive.
+    /// Creates a builder for adding a new directory to the archive.
     ///
     /// The name of the directory must end with a `/`.
-    pub fn new_dir(&mut self, name: &str, options: ZipEntryOptions) -> Result<(), Error> {
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use std::io::Cursor;
+    /// # let mut output = Cursor::new(Vec::new());
+    /// # let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
+    /// archive.new_dir("my-dir/")
+    ///     .unix_permissions(0o755)
+    ///     .create()?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn new_dir<'a>(&'a mut self, name: &'a str) -> ZipDirBuilder<'a, W> {
+        ZipDirBuilder {
+            archive: self,
+            name,
+            modification_time: None,
+            unix_permissions: None,
+        }
+    }
+
+    /// Adds a new directory to the archive with options (internal method).
+    ///
+    /// The name of the directory must end with a `/`.
+    fn new_dir_with_options(&mut self, name: &str, options: ZipEntryOptions) -> Result<(), Error> {
         let file_path = ZipFilePath::from_str(name);
         if !file_path.is_dir() {
             return Err(Error::from(ErrorKind::InvalidInput {
@@ -200,9 +318,37 @@ where
         Ok(())
     }
 
-    /// Adds a new file to the archive and returns a writer for the file's content,
-    /// which should be passed to a compressor.
-    pub fn new_file<'a>(
+    /// Creates a builder for adding a new file to the archive.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use std::io::{Cursor, Write};
+    /// # let mut output = Cursor::new(Vec::new());
+    /// # let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
+    /// let mut file = archive.new_file("my-file")
+    ///     .compression_method(rawzip::CompressionMethod::Deflate)
+    ///     .unix_permissions(0o644)
+    ///     .create()?;
+    /// let mut writer = rawzip::ZipDataWriter::new(&mut file);
+    /// writer.write_all(b"Hello, world!")?;
+    /// let (_, output) = writer.finish()?;
+    /// file.finish(output)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub fn new_file<'a>(&'a mut self, name: &'a str) -> ZipFileBuilder<'a, W> {
+        ZipFileBuilder {
+            archive: self,
+            name,
+            compression_method: CompressionMethod::Store,
+            modification_time: None,
+            unix_permissions: None,
+        }
+    }
+
+    /// Adds a new file to the archive with options (internal method).
+    fn new_file_with_options<'a>(
         &'a mut self,
         name: &str,
         options: ZipEntryOptions,
@@ -749,52 +895,9 @@ where
     Ok(())
 }
 
-/// Options for creating a new ZIP file entry.
-///
-/// The default compression method is `CompressionMethod::Store` (no compression).
 #[derive(Debug, Clone)]
-pub struct ZipEntryOptions {
+struct ZipEntryOptions {
     compression_method: CompressionMethod,
     modification_time: Option<UtcDateTime>,
     unix_permissions: Option<u32>,
-}
-
-impl Default for ZipEntryOptions {
-    fn default() -> Self {
-        ZipEntryOptions {
-            compression_method: CompressionMethod::Store,
-            modification_time: None,
-            unix_permissions: None,
-        }
-    }
-}
-
-impl ZipEntryOptions {
-    /// Sets the compression method for the new file entry.
-    pub fn compression_method(mut self, compression_method: CompressionMethod) -> Self {
-        self.compression_method = compression_method;
-        self
-    }
-
-    /// Sets the modification time for the new file entry.
-    ///
-    /// Only accepts UTC timestamps to ensure Extended Timestamp fields are written correctly.
-    pub fn modification_time(mut self, modification_time: UtcDateTime) -> Self {
-        self.modification_time = Some(modification_time);
-        self
-    }
-
-    /// Sets the Unix permissions for the new file entry.
-    ///
-    /// Accepts either:
-    /// - Basic permission bits (e.g., 0o644 for rw-r--r--, 0o755 for rwxr-xr-x)
-    /// - Full Unix mode including file type (e.g., 0o100644 for regular file, 0o040755 for directory)
-    /// - Special permission bits are preserved (SUID: 0o4000, SGID: 0o2000, sticky: 0o1000)
-    ///
-    /// When set, the archive will be created with Unix-compatible "version made by" field
-    /// to ensure proper interpretation of the permissions by zip readers.
-    pub fn unix_permissions(mut self, permissions: u32) -> Self {
-        self.unix_permissions = Some(permissions);
-        self
-    }
 }

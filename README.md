@@ -30,11 +30,10 @@ let data = b"Hello, world!";
 let mut output = Vec::new();
 let mut archive = rawzip::ZipArchiveWriter::new(&mut output);
 
-// Declare that we'll be compressing the data with the deflate compression method.
-let options = rawzip::ZipEntryOptions::default().compression_method(rawzip::CompressionMethod::Deflate);
-
-// Start of a new file in our zip archive.
-let mut file = archive.new_file("file.txt", options)?;
+// Start of a new file in our zip archive with deflate compression.
+let mut file = archive.new_file("file.txt")
+    .compression_method(rawzip::CompressionMethod::Deflate)
+    .create()?;
 
 // Wrap the file in a deflate compressor.
 let mut encoder = flate2::write::DeflateEncoder::new(&mut file, flate2::Compression::default());

@@ -15,7 +15,7 @@
 //! preserving modification times:
 //!
 //! ```
-//! use rawzip::{ZipArchive, ZipArchiveWriter, ZipDataWriter, ZipEntryOptions};
+//! use rawzip::{ZipArchive, ZipArchiveWriter, ZipDataWriter};
 //! use rawzip::time::{ZipDateTimeKind, UtcDateTime};
 //! use std::io::Write;
 //!
@@ -33,14 +33,12 @@
 //!     let name = entry.file_path().try_normalize().unwrap().as_ref().to_string();
 //!     let modification_time = entry.last_modified();
 //!     
-//!     let options = match modification_time {
-//!         ZipDateTimeKind::Utc(utc_time) => {
-//!             ZipEntryOptions::default().modification_time(utc_time)
-//!         }
+//!     let utc_time = match modification_time {
+//!         ZipDateTimeKind::Utc(utc_time) => utc_time,
 //!         ZipDateTimeKind::Local(local_time) => {
 //!             // Convert local time to UTC by reinterpreting the components
 //!             // This treats the local time as if it were UTC
-//!             let utc_time = UtcDateTime::from_components(
+//!             UtcDateTime::from_components(
 //!                 local_time.year(),
 //!                 local_time.month(),
 //!                 local_time.day(),
@@ -48,21 +46,26 @@
 //!                 local_time.minute(),
 //!                 local_time.second(),
 //!                 local_time.nanosecond()
-//!             ).unwrap();
-//!             ZipEntryOptions::default().modification_time(utc_time)
+//!             ).unwrap()
 //!         }
 //!     };
 //!
 //!     if !entry.is_dir() {
 //!         // Copy file with preserved modification time
-//!         let file = output_archive.new_file(&name, options).unwrap();
-//!         let mut writer = ZipDataWriter::new(file);
+//!         let mut file = output_archive.new_file(&name)
+//!             .last_modified(utc_time)
+//!             .create()
+//!             .unwrap();
+//!         let mut writer = ZipDataWriter::new(&mut file);
 //!         writer.write_all(b"example data").unwrap();
-//!         let (file, descriptor) = writer.finish().unwrap();
+//!         let (_, descriptor) = writer.finish().unwrap();
 //!         file.finish(descriptor).unwrap();
 //!     } else {
 //!         // Copy directory with preserved modification time
-//!         output_archive.new_dir(&name, options).unwrap();
+//!         output_archive.new_dir(&name)
+//!             .last_modified(utc_time)
+//!             .create()
+//!             .unwrap();
 //!     }
 //! }
 //!

@@ -1,4 +1,4 @@
-use rawzip::{ZipArchive, ZipArchiveWriter, ZipDataWriter, ZipEntryOptions};
+use rawzip::{ZipArchive, ZipArchiveWriter, ZipDataWriter};
 use std::io::Write;
 
 #[test]
@@ -20,9 +20,11 @@ fn test_unix_permissions_roundtrip() {
         {
             let mut archive = ZipArchiveWriter::new(&mut output);
 
-            let options = ZipEntryOptions::default().unix_permissions(permissions);
-
-            let mut file = archive.new_file("test_file.txt", options).unwrap();
+            let mut file = archive
+                .new_file("test_file.txt")
+                .unix_permissions(permissions)
+                .create()
+                .unwrap();
 
             let mut writer = ZipDataWriter::new(&mut file);
             writer.write_all(b"test content").unwrap();
@@ -59,9 +61,11 @@ fn test_directory_permissions_roundtrip() {
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
 
-        let options = ZipEntryOptions::default().unix_permissions(0o040755);
-
-        archive.new_dir("test_dir/", options).unwrap();
+        archive
+            .new_dir("test_dir/")
+            .unix_permissions(0o040755)
+            .create()
+            .unwrap();
         archive.finish().unwrap();
     }
 
@@ -92,9 +96,7 @@ fn test_permissions_without_unix_permissions() {
     {
         let mut archive = ZipArchiveWriter::new(&mut output);
 
-        let options = ZipEntryOptions::default(); // No unix_permissions set
-
-        let mut file = archive.new_file("test_file.txt", options).unwrap();
+        let mut file = archive.new_file("test_file.txt").create().unwrap(); // No unix_permissions set
 
         let mut writer = ZipDataWriter::new(&mut file);
         writer.write_all(b"test content").unwrap();

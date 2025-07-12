@@ -7,10 +7,11 @@ fn create_test_zip() -> Vec<u8> {
 
     for i in 0..100_000 {
         let filename = format!("file{:06}.txt", i);
-        let options =
-            rawzip::ZipEntryOptions::default().compression_method(rawzip::CompressionMethod::Store);
-
-        let mut file = archive.new_file(&filename, options).unwrap();
+        let mut file = archive
+            .new_file(&filename)
+            .compression_method(rawzip::CompressionMethod::Store)
+            .create()
+            .unwrap();
         let mut writer = rawzip::ZipDataWriter::new(&mut file);
         writer.write_all(b"x").unwrap();
         let (_, descriptor) = writer.finish().unwrap();

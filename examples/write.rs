@@ -1,4 +1,4 @@
-use rawzip::{ZipArchiveWriter, ZipDataWriter, ZipEntryOptions};
+use rawzip::{ZipArchiveWriter, ZipDataWriter};
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
@@ -44,21 +44,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn create_entry_options(file_path: &Path) -> Result<ZipEntryOptions, Box<dyn std::error::Error>> {
-    let metadata = fs::metadata(file_path)?;
+fn get_modification_time(
+    metadata: &fs::Metadata,
+) -> Result<rawzip::time::UtcDateTime, Box<dyn std::error::Error>> {
     let modified = metadata.modified()?;
 
     // Convert system time to UTC DateTime
     let unix_seconds = modified.duration_since(UNIX_EPOCH)?.as_secs() as i64;
-    let utc_datetime = rawzip::time::UtcDateTime::from_unix(unix_seconds);
-
-    let options = ZipEntryOptions::default().modification_time(utc_datetime);
-    let options = match get_unix_permissions(&metadata) {
-        Some(permissions) => options.unix_permissions(permissions),
-        None => options,
-    };
-
-    Ok(options)
+    Ok(rawzip::time::UtcDateTime::from_unix(unix_seconds))
 }
 
 fn add_file_to_archive<W: Write>(
@@ -66,10 +59,19 @@ fn add_file_to_archive<W: Write>(
     file_path: &Path,
     archive_path: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let options =
-        create_entry_options(file_path)?.compression_method(rawzip::CompressionMethod::Deflate);
+    let metadata = fs::metadata(file_path)?;
+    let modification_time = get_modification_time(&metadata)?;
 
-    let mut file = archive.new_file(archive_path, options)?;
+    let mut builder = archive
+        .new_file(archive_path)
+        .compression_method(rawzip::CompressionMethod::Deflate)
+        .last_modified(modification_time);
+
+    if let Some(permissions) = get_unix_permissions(&metadata) {
+        builder = builder.unix_permissions(permissions);
+    }
+
+    let mut file = builder.create()?;
 
     // Read and compress the file content using Deflate
     let file_content = fs::read(file_path)?;
@@ -107,10 +109,19 @@ fn add_directory_to_archive<W: Write>(
             add_file_to_archive(archive, &path, &archive_path)?;
         } else if path.is_dir() {
             // Add directory entry
-            let options = create_entry_options(&path)?;
+            let metadata = fs::metadata(&path)?;
+            let modification_time = get_modification_time(&metadata)?;
 
             let dir_archive_path = format!("{}/", archive_path);
-            archive.new_dir(&dir_archive_path, options)?;
+            let mut builder = archive
+                .new_dir(&dir_archive_path)
+                .last_modified(modification_time);
+
+            if let Some(permissions) = get_unix_permissions(&metadata) {
+                builder = builder.unix_permissions(permissions);
+            }
+
+            builder.create()?;
             println!("  adding: {}", dir_archive_path);
 
             // Recursively add directory contents
