@@ -135,12 +135,22 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
             entry.crc
         };
 
+        let data_start_offset = entry.local_header_offset
+            + ZipLocalFileHeaderFixed::SIZE as u64
+            + file_header.variable_length() as u64;
+
+        debug_assert!(std::ptr::eq(
+            data.as_ptr(),
+            self.data.as_ref()[data_start_offset as usize..].as_ptr()
+        ));
+
         Ok(ZipSliceEntry {
             data,
             verifier: ZipVerification {
                 crc: expected_crc,
                 uncompressed_size: entry.uncompressed_size_hint(),
             },
+            data_start_offset,
         })
     }
 }
@@ -152,6 +162,7 @@ impl<T: AsRef<[u8]>> ZipSliceArchive<T> {
 pub struct ZipSliceEntry<'a> {
     data: &'a [u8],
     verifier: ZipVerification,
+    data_start_offset: u64,
 }
 
 impl<'a> ZipSliceEntry<'a> {
@@ -181,6 +192,16 @@ impl<'a> ZipSliceEntry<'a> {
             crc: 0,
             size: 0,
         }
+    }
+
+    /// Returns the byte range of the compressed data within the archive.
+    ///
+    /// See [`ZipEntry::compressed_data_range`] for more details.
+    pub fn compressed_data_range(&self) -> (u64, u64) {
+        (
+            self.data_start_offset,
+            self.data_start_offset + self.data.len() as u64,
+        )
     }
 }
 
@@ -472,6 +493,49 @@ where
             end_offset: self.body_end_offset,
             wayfinder: self.entry,
         }
+    }
+
+    /// Returns a tuple of start and end byte offsets for the compressed data
+    /// within the underlying reader.
+    ///
+    /// This method uses the information from the local file header in its
+    /// calculations.
+    ///
+    /// # Security Usage
+    ///
+    /// This method is useful for detecting overlapping entries, which are often
+    /// used in zip bombs. By comparing the ranges returned by this method
+    /// across multiple entries, you can identify when entries share compressed
+    /// data:
+    ///
+    /// ```rust
+    /// # use rawzip::{ZipArchive, Error};
+    /// # fn example(data: &[u8]) -> Result<(), Error> {
+    /// let archive = ZipArchive::from_slice(data)?;
+    /// let mut ranges = Vec::new();
+    ///
+    /// for entry_result in archive.entries() {
+    ///     let entry = entry_result?;
+    ///     let wayfinder = entry.wayfinder();
+    ///     if let Ok(zip_entry) = archive.get_entry(wayfinder) {
+    ///         ranges.push(zip_entry.compressed_data_range());
+    ///     }
+    /// }
+    ///
+    /// // Check for overlapping ranges
+    /// ranges.sort_by_key(|&(start, _)| start);
+    /// for window in ranges.windows(2) {
+    ///     let (_, end1) = window[0];
+    ///     let (start2, _) = window[1];
+    ///     if end1 > start2 {
+    ///         panic!("Warning: Overlapping entries detected!");
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn compressed_data_range(&self) -> (u64, u64) {
+        (self.body_offset, self.body_end_offset)
     }
 }
 
@@ -1757,5 +1821,52 @@ mod tests {
         let archive = ZipArchive::from_seekable(Cursor::new(data), &mut buf).unwrap();
         let mut entries = archive.entries(&mut buf);
         assert!(entries.next_entry().is_err());
+    }
+
+    #[test]
+    fn test_compressed_data_range() {
+        let test_zip = std::fs::read("assets/test.zip").unwrap();
+
+        // Test ZipSliceEntry API (from slice)
+        let slice_archive = ZipArchive::from_slice(&test_zip).unwrap();
+        let slice_header_records: Vec<_> = slice_archive
+            .entries()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(slice_header_records.len(), 2);
+
+        let entry1_wayfinder = slice_header_records[0].wayfinder();
+        let slice_entry1 = slice_archive.get_entry(entry1_wayfinder).unwrap();
+        let slice_range1 = slice_entry1.compressed_data_range();
+        assert_eq!(
+            slice_range1,
+            (66, 91),
+            "test.txt compressed data should be at bytes 66-91"
+        );
+
+        let entry2_wayfinder = slice_header_records[1].wayfinder();
+        let slice_entry2 = slice_archive.get_entry(entry2_wayfinder).unwrap();
+        let slice_range2 = slice_entry2.compressed_data_range();
+        assert_eq!(
+            slice_range2,
+            (169, 954),
+            "gophercolor16x16.png compressed data should be at bytes 169-954"
+        );
+
+        // Test ZipEntry API
+        let file = std::fs::File::open("assets/test.zip").unwrap();
+        let mut buffer = vec![0u8; RECOMMENDED_BUFFER_SIZE];
+        let reader_archive = ZipArchive::from_file(file, &mut buffer).unwrap();
+
+        // Get wayfinders from the slice archive since they should be identical
+        let reader_entry1 = reader_archive.get_entry(entry1_wayfinder).unwrap();
+        let reader_range1 = reader_entry1.compressed_data_range();
+
+        let reader_entry2 = reader_archive.get_entry(entry2_wayfinder).unwrap();
+        let reader_range2 = reader_entry2.compressed_data_range();
+
+        // Verify both APIs return identical ranges
+        assert_eq!(slice_range1, reader_range1);
+        assert_eq!(slice_range2, reader_range2);
     }
 }
