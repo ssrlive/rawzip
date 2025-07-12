@@ -1,7 +1,8 @@
 use crate::{
     crc,
     errors::ErrorKind,
-    path::{NormalizedPathBuf, ZipFilePath},
+    path::{NormalizedPath, NormalizedPathBuf, ZipFilePath},
+    time::{DosDateTime, UtcDateTime, EXTENDED_TIMESTAMP_ID},
     CompressionMethod, DataDescriptor, Error, ZipLocalFileHeaderFixed, CENTRAL_HEADER_SIGNATURE,
     END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE, END_OF_CENTRAL_DIR_SIGNATURE64,
     END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES,
@@ -116,10 +117,49 @@ impl<W> ZipArchiveWriter<W>
 where
     W: Write,
 {
+    /// Writes a local file header and extended timestamp extra field if present.
+    fn write_local_header(
+        &mut self,
+        file_path: &ZipFilePath<NormalizedPath>,
+        flags: u16,
+        compression_method: CompressionMethod,
+        options: &ZipEntryOptions,
+    ) -> Result<(), Error> {
+        // Get DOS timestamp from options or use 0 as default
+        let (dos_time, dos_date) = options
+            .modification_time
+            .as_ref()
+            .map(|dt| DosDateTime::from(dt).into_parts())
+            .unwrap_or((0, 0));
+
+        let extra_field_len =
+            extended_timestamp_extra_field_size(options.modification_time.as_ref());
+
+        let header = ZipLocalFileHeaderFixed {
+            signature: ZipLocalFileHeaderFixed::SIGNATURE,
+            version_needed: 20,
+            flags,
+            compression_method: compression_method.as_id(),
+            last_mod_time: dos_time,
+            last_mod_date: dos_date,
+            crc32: 0,
+            compressed_size: 0,
+            uncompressed_size: 0,
+            file_name_len: file_path.len() as u16,
+            extra_field_len,
+        };
+
+        header.write(&mut self.writer)?;
+        self.writer.write_all(file_path.as_ref().as_bytes())?;
+        write_extended_timestamp_field(&mut self.writer, options.modification_time.as_ref())?;
+
+        Ok(())
+    }
+
     /// Adds a new directory to the archive.
     ///
     /// The name of the directory must end with a `/`.
-    pub fn new_dir(&mut self, name: &str) -> Result<(), Error> {
+    pub fn new_dir(&mut self, name: &str, options: ZipEntryOptions) -> Result<(), Error> {
         let file_path = ZipFilePath::from_str(name);
         if !file_path.is_dir() {
             return Err(Error::from(ErrorKind::InvalidInput {
@@ -141,22 +181,8 @@ where
             flags &= !FLAG_UTF8_ENCODING;
         }
 
-        let header = ZipLocalFileHeaderFixed {
-            signature: ZipLocalFileHeaderFixed::SIGNATURE,
-            version_needed: 20,
-            flags,
-            compression_method: CompressionMethod::Store.as_id(),
-            last_mod_time: 0,
-            last_mod_date: 0,
-            crc32: 0,
-            compressed_size: 0,
-            uncompressed_size: 0,
-            file_name_len: file_path.len() as u16,
-            extra_field_len: 0,
-        };
+        self.write_local_header(&file_path, flags, CompressionMethod::Store, &options)?;
 
-        header.write(&mut self.writer)?;
-        self.writer.write_all(file_path.as_ref().as_bytes())?;
         let file_header = FileHeader {
             name: file_path.into_owned(),
             compression_method: CompressionMethod::Store,
@@ -165,6 +191,7 @@ where
             uncompressed_size: 0,
             crc: 0,
             flags,
+            modification_time: options.modification_time,
         };
         self.files.push(file_header);
 
@@ -194,22 +221,7 @@ where
             flags &= !FLAG_UTF8_ENCODING;
         }
 
-        let header = ZipLocalFileHeaderFixed {
-            signature: ZipLocalFileHeaderFixed::SIGNATURE,
-            version_needed: 20,
-            flags,
-            compression_method: options.compression_method.as_id(),
-            last_mod_time: 0,
-            last_mod_date: 0,
-            crc32: 0,
-            compressed_size: 0,
-            uncompressed_size: 0,
-            file_name_len: file_path.len() as u16,
-            extra_field_len: 0,
-        };
-
-        header.write(&mut self.writer)?;
-        self.writer.write_all(file_path.as_ref().as_bytes())?;
+        self.write_local_header(&file_path, flags, options.compression_method, &options)?;
 
         Ok(ZipEntryWriter::new(
             self,
@@ -217,6 +229,7 @@ where
             local_header_offset,
             options.compression_method,
             flags,
+            options.modification_time,
         ))
     }
 
@@ -260,8 +273,13 @@ where
                 .write_all(&file.compression_method.as_id().as_u16().to_le_bytes())?;
 
             // Last mod file time and date
-            self.writer.write_all(&0u16.to_le_bytes())?;
-            self.writer.write_all(&0u16.to_le_bytes())?;
+            let (dos_time, dos_date) = file
+                .modification_time
+                .as_ref()
+                .map(|dt| DosDateTime::from(dt).into_parts())
+                .unwrap_or((0, 0));
+            self.writer.write_all(&dos_time.to_le_bytes())?;
+            self.writer.write_all(&dos_date.to_le_bytes())?;
 
             // CRC-32
             self.writer.write_all(&file.crc.to_le_bytes())?;
@@ -279,7 +297,8 @@ where
                 .write_all(&(file.name.len() as u16).to_le_bytes())?;
 
             // Extra field length
-            let extra_field_length = file.zip64_extra_field_size();
+            let extra_field_length = file.zip64_extra_field_size()
+                + extended_timestamp_extra_field_size(file.modification_time.as_ref());
             self.writer.write_all(&extra_field_length.to_le_bytes())?;
 
             // File comment length
@@ -300,6 +319,8 @@ where
 
             // ZIP64 extended information extra field
             file.write_zip64_extra_field(&mut self.writer)?;
+
+            write_extended_timestamp_field(&mut self.writer, file.modification_time.as_ref())?;
         }
 
         let central_directory_end = self.writer.count();
@@ -361,6 +382,7 @@ pub struct ZipEntryWriter<'a, W> {
     local_header_offset: u64,
     compression_method: CompressionMethod,
     flags: u16,
+    modification_time: Option<UtcDateTime>,
 }
 
 impl<'a, W> ZipEntryWriter<'a, W> {
@@ -371,6 +393,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
         local_header_offset: u64,
         compression_method: CompressionMethod,
         flags: u16,
+        modification_time: Option<UtcDateTime>,
     ) -> Self {
         ZipEntryWriter {
             inner,
@@ -379,6 +402,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             local_header_offset,
             compression_method,
             flags,
+            modification_time,
         }
     }
 
@@ -431,6 +455,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             uncompressed_size: output.uncompressed_size,
             crc: output.crc,
             flags: self.flags,
+            modification_time: self.modification_time,
         };
         self.inner.files.push(file_header);
 
@@ -551,6 +576,7 @@ struct FileHeader {
     uncompressed_size: u64,
     crc: u32,
     flags: u16,
+    modification_time: Option<UtcDateTime>,
 }
 
 impl FileHeader {
@@ -620,6 +646,32 @@ impl FileHeader {
     }
 }
 
+fn extended_timestamp_extra_field_size(modification_time: Option<&UtcDateTime>) -> u16 {
+    if modification_time.is_some() {
+        9 // 2 bytes ID + 2 bytes size + 1 byte flags + 4 bytes timestamp
+    } else {
+        0
+    }
+}
+
+fn write_extended_timestamp_field<W>(
+    writer: &mut W,
+    datetime: Option<&UtcDateTime>,
+) -> Result<(), Error>
+where
+    W: Write,
+{
+    let Some(datetime) = datetime else {
+        return Ok(());
+    };
+    let unix_time = datetime.to_unix().max(0) as u32; // ZIP format uses u32 for Unix timestamps, clamp negatives to 0
+    writer.write_all(&EXTENDED_TIMESTAMP_ID.to_le_bytes())?;
+    writer.write_all(&5u16.to_le_bytes())?; // Size: 1 byte flags + 4 bytes timestamp
+    writer.write_all(&1u8.to_le_bytes())?; // Flags: modification time present
+    writer.write_all(&unix_time.to_le_bytes())?; // Unix timestamp
+    Ok(())
+}
+
 /// Writes the ZIP64 End of Central Directory Record
 fn write_zip64_eocd<W>(
     writer: &mut W,
@@ -687,15 +739,17 @@ where
 /// Options for creating a new ZIP file entry.
 ///
 /// The default compression method is `CompressionMethod::Store` (no compression).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ZipEntryOptions {
     compression_method: CompressionMethod,
+    modification_time: Option<UtcDateTime>,
 }
 
 impl Default for ZipEntryOptions {
     fn default() -> Self {
         ZipEntryOptions {
             compression_method: CompressionMethod::Store,
+            modification_time: None,
         }
     }
 }
@@ -704,6 +758,14 @@ impl ZipEntryOptions {
     /// Sets the compression method for the new file entry.
     pub fn compression_method(mut self, compression_method: CompressionMethod) -> Self {
         self.compression_method = compression_method;
+        self
+    }
+
+    /// Sets the modification time for the new file entry.
+    ///
+    /// Only accepts UTC timestamps to ensure Extended Timestamp fields are written correctly.
+    pub fn modification_time(mut self, modification_time: UtcDateTime) -> Self {
+        self.modification_time = Some(modification_time);
         self
     }
 }

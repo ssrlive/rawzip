@@ -1,9 +1,11 @@
 use quickcheck_macros::quickcheck;
-use rawzip::{Error, ErrorKind, TimeZone};
+use rawzip::time::{LocalDateTime, UtcDateTime, ZipDateTimeKind};
+use rawzip::{Error, ErrorKind};
 use std::fs::File;
 use std::io::Cursor;
 use std::path::Path;
 
+mod modification_time_tests;
 mod utf8_tests;
 mod zip64_tests;
 
@@ -35,7 +37,7 @@ struct ZipTestCase {
 struct ZipTestFileEntry {
     name: &'static str,
     expected_content: ExpectedContent,
-    expected_datetime: Option<rawzip::ZipDateTime>,
+    expected_datetime: Option<ZipDateTimeKind>,
     expected_mode: Option<u32>,
 }
 
@@ -55,30 +57,16 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "test.txt",
                 expected_content: ExpectedContent::Content(b"This is a test text file.\n".to_vec(),),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2010,
-                    9,
-                    5,
-                    2,
-                    12,
-                    1,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2010, 9, 5, 2, 12, 1, 0).unwrap()
                 )), // 2010-09-05 02:12:01 UTC
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
                 expected_content: ExpectedContent::File("gophercolor16x16.png"),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2010,
-                    9,
-                    5,
-                    5,
-                    52,
-                    58,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2010, 9, 5, 5, 52, 58, 0).unwrap()
                 )), // 2010-09-05 05:52:58 UTC
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
@@ -105,30 +93,16 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "test.txt",
                 expected_content: ExpectedContent::Content(b"This is a test text file.\n".to_vec(),),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2010,
-                    9,
-                    5,
-                    2,
-                    12,
-                    1,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2010, 9, 5, 2, 12, 1, 0).unwrap()
                 )), // 2010-09-05 02:12:01 UTC
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
                 expected_content: ExpectedContent::File("gophercolor16x16.png"),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2010,
-                    9,
-                    5,
-                    5,
-                    52,
-                    58,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2010, 9, 5, 5, 52, 58, 0).unwrap()
                 )), // 2010-09-05 05:52:58 UTC
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
@@ -146,30 +120,16 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "test.txt",
                 expected_content: ExpectedContent::Content(b"This is a test text file.\n".to_vec(),),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2010,
-                    9,
-                    5,
-                    2,
-                    12,
-                    1,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2010, 9, 5, 2, 12, 1, 0).unwrap()
                 )), // 2010-09-05 02:12:01 UTC
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "gophercolor16x16.png",
                 expected_content: ExpectedContent::File("gophercolor16x16.png"),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2010,
-                    9,
-                    5,
-                    5,
-                    52,
-                    58,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2010, 9, 5, 5, 52, 58, 0).unwrap()
                 )), // 2010-09-05 05:52:58 UTC
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
@@ -185,15 +145,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "symlink",
             expected_content: ExpectedContent::Content(b"../target".to_vec()),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2012,
-                2,
-                3,
-                21,
-                56,
-                48,
-                0,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2012, 2, 3, 21, 56, 48, 0).unwrap()
             )), // 2012-02-03 21:56:48 (UTC from archive)
             expected_mode: Some(0o120777), // Symlink with 777 permissions
         }],
@@ -218,60 +171,32 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "hello",
                 expected_content: ExpectedContent::Content(b"world \r\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    4,
-                    24,
-                    0,
-                    TimeZone::Local
+                expected_datetime: Some(ZipDateTimeKind::Local(
+                    LocalDateTime::from_components(2011, 12, 8, 10, 4, 24, 0).unwrap()
                 )),
                 expected_mode: Some(0o100666), // Regular file with 666 permissions (Windows)
             },
             ZipTestFileEntry {
                 name: "dir/bar",
                 expected_content: ExpectedContent::Content(b"foo \r\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    4,
-                    50,
-                    0,
-                    TimeZone::Local
+                expected_datetime: Some(ZipDateTimeKind::Local(
+                    LocalDateTime::from_components(2011, 12, 8, 10, 4, 50, 0).unwrap()
                 )),
                 expected_mode: Some(0o100666), // Regular file with 666 permissions (Windows)
             },
             ZipTestFileEntry {
                 name: "dir/empty/",
                 expected_content: ExpectedContent::Content(b"".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    8,
-                    6,
-                    0,
-                    TimeZone::Local
+                expected_datetime: Some(ZipDateTimeKind::Local(
+                    LocalDateTime::from_components(2011, 12, 8, 10, 8, 6, 0).unwrap()
                 )),
                 expected_mode: Some(0o040777), // Directory with 777 permissions (Windows)
             },
             ZipTestFileEntry {
                 name: "readonly",
                 expected_content: ExpectedContent::Content(b"important \r\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    6,
-                    8,
-                    0,
-                    TimeZone::Local
+                expected_datetime: Some(ZipDateTimeKind::Local(
+                    LocalDateTime::from_components(2011, 12, 8, 10, 6, 8, 0).unwrap()
                 )),
                 expected_mode: Some(0o100444), // Read-only file (Windows)
             },
@@ -289,60 +214,32 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "hello",
                 expected_content: ExpectedContent::Content(b"world \r\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    4,
-                    24,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2011, 12, 8, 10, 4, 24, 0).unwrap()
                 )), // 2011-12-08 10:04:24 UTC (but stored as local time)
                 expected_mode: Some(0o100666), // Regular file with 666 permissions (Unix)
             },
             ZipTestFileEntry {
                 name: "dir/bar",
                 expected_content: ExpectedContent::Content(b"foo \r\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    4,
-                    50,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2011, 12, 8, 10, 4, 50, 0).unwrap()
                 )), // 2011-12-08 10:04:50 UTC (but stored as local time)
                 expected_mode: Some(0o100666), // Regular file with 666 permissions (Unix)
             },
             ZipTestFileEntry {
                 name: "dir/empty/",
                 expected_content: ExpectedContent::Content(b"".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    8,
-                    6,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2011, 12, 8, 10, 8, 6, 0).unwrap()
                 )), // 2011-12-08 10:08:06 UTC (but stored as local time)
                 expected_mode: Some(0o040777), // Directory with 777 permissions (Unix)
             },
             ZipTestFileEntry {
                 name: "readonly",
                 expected_content: ExpectedContent::Content(b"important \r\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2011,
-                    12,
-                    8,
-                    10,
-                    6,
-                    8,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2011, 12, 8, 10, 6, 8, 0).unwrap()
                 )), // 2011-12-08 10:06:08 UTC (but stored as local time)
                 expected_mode: Some(0o100444), // Read-only file (Unix)
             },
@@ -361,30 +258,16 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "foo.txt",
                 expected_content: ExpectedContent::Content(b"foo\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    1980,
-                    1,
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    TimeZone::Local
+                expected_datetime: Some(ZipDateTimeKind::Local(
+                    LocalDateTime::from_components(1980, 1, 1, 0, 0, 0, 0).unwrap()
                 )), // DOS timestamp 0x0000 0x0000 normalized to 1980-01-01 00:00:00
                 expected_mode: Some(0o100666), // Regular file with 666 permissions
             },
             ZipTestFileEntry {
                 name: "bar.txt",
                 expected_content: ExpectedContent::Content(b"bar\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    1980,
-                    1,
-                    1,
-                    0,
-                    0,
-                    0,
-                    0,
-                    TimeZone::Local
+                expected_datetime: Some(ZipDateTimeKind::Local(
+                    LocalDateTime::from_components(1980, 1, 1, 0, 0, 0, 0).unwrap()
                 )), // DOS timestamp 0x0000 0x0000 normalized to 1980-01-01 00:00:00
                 expected_mode: Some(0o100666), // Regular file with 666 permissions
             },
@@ -401,30 +284,16 @@ zip_test_case!(
             ZipTestFileEntry {
                 name: "foo.txt",
                 expected_content: ExpectedContent::Content(b"foo\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2012,
-                    3,
-                    9,
-                    0,
-                    59,
-                    10,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2012, 3, 9, 0, 59, 10, 0).unwrap()
                 )), // 2012-03-09 00:59:10 (UTC from archive)
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
             ZipTestFileEntry {
                 name: "bar.txt",
                 expected_content: ExpectedContent::Content(b"bar\n".to_vec()),
-                expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                    2012,
-                    3,
-                    9,
-                    0,
-                    59,
-                    12,
-                    0,
-                    TimeZone::Utc
+                expected_datetime: Some(ZipDateTimeKind::Utc(
+                    UtcDateTime::from_components(2012, 3, 9, 0, 59, 12, 0).unwrap()
                 )), // 2012-03-09 00:59:12 (UTC from archive)
                 expected_mode: Some(0o100644), // Regular file with 644 permissions
             },
@@ -442,15 +311,8 @@ zip_test_case!(
             expected_content: ExpectedContent::Content(
                 b"This small file is in ZIP64 format.\n".to_vec(),
             ),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2012,
-                8,
-                10,
-                18,
-                33,
-                32,
-                0,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2012, 8, 10, 18, 33, 32, 0).unwrap()
             )), // 2012-08-10 18:33:32 (UTC from archive)
             expected_mode: Some(0o100644), // Regular file with 644 permissions
         }],
@@ -465,15 +327,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "test.txt",
             expected_content: ExpectedContent::Content(vec![]),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2017,
-                11,
-                1,
-                4,
-                11,
-                57,
-                244817900,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2017, 11, 1, 4, 11, 57, 244817900).unwrap()
             )), // 2017-10-31 21:11:57.244817900 (-7 hours) = 2017-11-01 04:11:57.244817900 UTC
             expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
@@ -488,15 +343,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "test.txt",
             expected_content: ExpectedContent::Content(vec![]),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2017,
-                11,
-                1,
-                4,
-                11,
-                57,
-                0,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2017, 11, 1, 4, 11, 57, 0).unwrap()
             )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
             expected_mode: Some(0o100644), // Regular file with 644 permissions
         }],
@@ -511,15 +359,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "test.txt",
             expected_content: ExpectedContent::Content(vec![]),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2017,
-                11,
-                1,
-                4,
-                11,
-                57,
-                0,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2017, 11, 1, 4, 11, 57, 0).unwrap()
             )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
             expected_mode: Some(0o100644), // Regular file with 644 permissions
         }],
@@ -534,15 +375,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "test.txt",
             expected_content: ExpectedContent::Content(vec![]),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2017,
-                10,
-                31,
-                21,
-                11,
-                58,
-                0,
-                TimeZone::Local
+            expected_datetime: Some(ZipDateTimeKind::Local(
+                LocalDateTime::from_components(2017, 10, 31, 21, 11, 58, 0).unwrap()
             )), // 2017-10-31 21:11:58.000 (DOS local time)
             expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
@@ -557,15 +391,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "test.txt",
             expected_content: ExpectedContent::Content(vec![]),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2017,
-                11,
-                1,
-                4,
-                11,
-                57,
-                244817900,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2017, 11, 1, 4, 11, 57, 244817900).unwrap()
             )), // 2017-10-31 21:11:57.244817900 (-7 hours) = 2017-11-01 04:11:57.244817900 UTC
             expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
@@ -580,15 +407,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "test.txt",
             expected_content: ExpectedContent::Content(vec![]),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2017,
-                11,
-                1,
-                4,
-                11,
-                57,
-                244000000,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2017, 11, 1, 4, 11, 57, 244000000).unwrap()
             )), // 2017-10-31 21:11:57.244000000 (-7 hours) = 2017-11-01 04:11:57.244000000 UTC
             expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
@@ -603,15 +423,8 @@ zip_test_case!(
         files: vec![ZipTestFileEntry {
             name: "test.txt",
             expected_content: ExpectedContent::Content(vec![]),
-            expected_datetime: Some(rawzip::ZipDateTime::from_components(
-                2017,
-                11,
-                1,
-                4,
-                11,
-                57,
-                0,
-                TimeZone::Utc
+            expected_datetime: Some(ZipDateTimeKind::Utc(
+                UtcDateTime::from_components(2017, 11, 1, 4, 11, 57, 0).unwrap()
             )), // 2017-10-31 21:11:57.000 (-7 hours) = 2017-11-01 04:11:57.000 UTC
             expected_mode: Some(0o100666), // Regular file with 666 permissions
         }],
