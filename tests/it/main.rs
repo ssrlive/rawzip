@@ -641,9 +641,7 @@ fn process_archive_files<R: rawzip::ReaderAt>(
         loop {
             match entries_for_current_expected_file.next_entry() {
                 Ok(Some(entry)) => {
-                    let file_name = entry.file_safe_path().unwrap();
-
-                    if file_name == expected_file.name {
+                    if entry.file_path().try_normalize().unwrap().as_ref() == expected_file.name {
                         actual_files_found += 1;
                         found_file = true;
 
@@ -750,9 +748,7 @@ fn process_slice_archive_files(
         loop {
             match entries_for_current_expected_file.next_entry() {
                 Ok(Some(entry)) => {
-                    let file_name = entry.file_safe_path().unwrap();
-
-                    if file_name == expected_file.name {
+                    if entry.file_path().try_normalize().unwrap().as_ref() == expected_file.name {
                         actual_files_found += 1;
                         found_file = true;
 
@@ -985,7 +981,10 @@ fn test_read_what_we_write_slice(data: Vec<u8>) {
     let archive = rawzip::ZipArchive::from_slice(&output).unwrap();
     let mut entries = archive.entries();
     let entry = entries.next_entry().unwrap().unwrap();
-    assert_eq!(entry.file_safe_path().unwrap(), "file.txt");
+    assert_eq!(
+        entry.file_path().try_normalize().unwrap().as_ref(),
+        "file.txt"
+    );
     assert_eq!(entry.compression_method(), rawzip::CompressionMethod::Store);
     assert_eq!(entry.uncompressed_size_hint(), data.len() as u64);
     assert_eq!(entry.compressed_size_hint(), data.len() as u64);

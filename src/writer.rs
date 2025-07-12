@@ -1,7 +1,10 @@
 use crate::{
-    crc, errors::ErrorKind, CompressionMethod, DataDescriptor, Error, ZipFilePath,
-    ZipLocalFileHeaderFixed, CENTRAL_HEADER_SIGNATURE, END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE,
-    END_OF_CENTRAL_DIR_SIGNATURE64, END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES,
+    crc,
+    errors::ErrorKind,
+    path::{NormalizedPathBuf, ZipFilePath},
+    CompressionMethod, DataDescriptor, Error, ZipLocalFileHeaderFixed, CENTRAL_HEADER_SIGNATURE,
+    END_OF_CENTRAL_DIR_LOCATOR_SIGNATURE, END_OF_CENTRAL_DIR_SIGNATURE64,
+    END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES,
 };
 use std::io::{self, Write};
 
@@ -117,16 +120,14 @@ where
     ///
     /// The name of the directory must end with a `/`.
     pub fn new_dir(&mut self, name: &str) -> Result<(), Error> {
-        let file_path = ZipFilePath::new(name.as_bytes());
+        let file_path = ZipFilePath::from_str(name);
         if !file_path.is_dir() {
             return Err(Error::from(ErrorKind::InvalidInput {
                 msg: "not a directory".to_string(),
             }));
         }
 
-        let safe_file_path = file_path.normalize()?.into_owned();
-
-        if safe_file_path.len() > u16::MAX as usize {
+        if file_path.len() > u16::MAX as usize {
             return Err(Error::from(ErrorKind::InvalidInput {
                 msg: "directory name too long".to_string(),
             }));
@@ -134,7 +135,7 @@ where
 
         let local_header_offset = self.writer.count();
         let mut flags = 0u16;
-        if needs_utf8_encoding(&safe_file_path) {
+        if file_path.needs_utf8_encoding() {
             flags |= FLAG_UTF8_ENCODING;
         } else {
             flags &= !FLAG_UTF8_ENCODING;
@@ -150,14 +151,14 @@ where
             crc32: 0,
             compressed_size: 0,
             uncompressed_size: 0,
-            file_name_len: safe_file_path.len() as u16,
+            file_name_len: file_path.len() as u16,
             extra_field_len: 0,
         };
 
         header.write(&mut self.writer)?;
-        self.writer.write_all(safe_file_path.as_bytes())?;
+        self.writer.write_all(file_path.as_ref().as_bytes())?;
         let file_header = FileHeader {
-            name: safe_file_path,
+            name: file_path.into_owned(),
             compression_method: CompressionMethod::Store,
             local_header_offset,
             compressed_size: 0,
@@ -177,10 +178,9 @@ where
         name: &str,
         options: ZipEntryOptions,
     ) -> Result<ZipEntryWriter<'a, W>, Error> {
-        let file_path = ZipFilePath::new(name.as_bytes());
-        let safe_file_path = file_path.normalize()?.trim_end_matches('/').to_owned();
+        let file_path = ZipFilePath::from_str(name.trim_end_matches('/'));
 
-        if safe_file_path.len() > u16::MAX as usize {
+        if file_path.len() > u16::MAX as usize {
             return Err(Error::from(ErrorKind::InvalidInput {
                 msg: "file name too long".to_string(),
             }));
@@ -188,7 +188,7 @@ where
 
         let local_header_offset = self.writer.count();
         let mut flags = FLAG_DATA_DESCRIPTOR;
-        if needs_utf8_encoding(&safe_file_path) {
+        if file_path.needs_utf8_encoding() {
             flags |= FLAG_UTF8_ENCODING;
         } else {
             flags &= !FLAG_UTF8_ENCODING;
@@ -204,16 +204,16 @@ where
             crc32: 0,
             compressed_size: 0,
             uncompressed_size: 0,
-            file_name_len: safe_file_path.len() as u16,
+            file_name_len: file_path.len() as u16,
             extra_field_len: 0,
         };
 
         header.write(&mut self.writer)?;
-        self.writer.write_all(safe_file_path.as_bytes())?;
+        self.writer.write_all(file_path.as_ref().as_bytes())?;
 
         Ok(ZipEntryWriter::new(
             self,
-            safe_file_path,
+            file_path.into_owned(),
             local_header_offset,
             options.compression_method,
             flags,
@@ -296,7 +296,7 @@ where
             self.writer.write_all(&local_header_offset.to_le_bytes())?;
 
             // File name
-            self.writer.write_all(file.name.as_bytes())?;
+            self.writer.write_all(file.name.as_ref().as_bytes())?;
 
             // ZIP64 extended information extra field
             file.write_zip64_extra_field(&mut self.writer)?;
@@ -357,7 +357,7 @@ where
 pub struct ZipEntryWriter<'a, W> {
     inner: &'a mut ZipArchiveWriter<W>,
     compressed_bytes: u64,
-    name: String,
+    name: ZipFilePath<NormalizedPathBuf>,
     local_header_offset: u64,
     compression_method: CompressionMethod,
     flags: u16,
@@ -367,7 +367,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
     /// Creates a new `TrackingWriter` wrapping the given writer.
     pub(crate) fn new(
         inner: &'a mut ZipArchiveWriter<W>,
-        name: String,
+        name: ZipFilePath<NormalizedPathBuf>,
         local_header_offset: u64,
         compression_method: CompressionMethod,
         flags: u16,
@@ -544,7 +544,7 @@ impl DataDescriptorOutput {
 
 #[derive(Debug)]
 struct FileHeader {
-    name: String,
+    name: ZipFilePath<NormalizedPathBuf>,
     compression_method: CompressionMethod,
     local_header_offset: u64,
     compressed_size: u64,
@@ -706,28 +706,4 @@ impl ZipEntryOptions {
         self.compression_method = compression_method;
         self
     }
-}
-
-/// Determines if a filename requires UTF-8 encoding based on CP-437 compatibility.
-///
-/// This implementation follows the same logic as Go's archive/zip package.
-/// Officially, ZIP uses CP-437, but many readers use the system's local character
-/// encoding. Most encodings are compatible with a large subset of CP-437, which
-/// itself is ASCII-like.
-///
-/// According to the ZIP specification, most ZIP creators only set the UTF-8 flag
-/// when it's actually needed for the filename.
-fn needs_utf8_encoding(filename: &str) -> bool {
-    for ch in filename.chars() {
-        let code_point = ch as u32;
-
-        // Forbid 0x7e (~) and 0x5c (\) since EUC-KR and Shift-JIS replace those
-        // characters with localized currency and overline characters.
-        // Also forbid control characters (< 0x20) and characters above 0x7d.
-        if !(0x20..=0x7d).contains(&code_point) || code_point == 0x5c {
-            return true;
-        }
-    }
-
-    false
 }
