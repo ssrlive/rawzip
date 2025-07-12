@@ -290,7 +290,7 @@ impl AsRef<[u8]> for ZipFilePath<RawPath<'_>> {
     }
 }
 
-impl ZipFilePath<RawPath<'_>> {
+impl<'a> ZipFilePath<RawPath<'a>> {
     /// Attempts to normalize this raw path into a safe, validated path.
     ///
     /// Validates the raw bytes as UTF-8 and applies normalization rules.
@@ -298,8 +298,10 @@ impl ZipFilePath<RawPath<'_>> {
     /// # Errors
     ///
     /// Returns an error if the file path contains invalid UTF-8 sequences.
-    pub fn try_normalize(&self) -> Result<ZipFilePath<NormalizedPath<'_>>, Error> {
-        let name = std::str::from_utf8(self.as_ref()).map_err(Error::utf8)?;
+    #[inline]
+    pub fn try_normalize(self) -> Result<ZipFilePath<NormalizedPath<'a>>, Error> {
+        let raw_data = self.data.data;
+        let name = std::str::from_utf8(raw_data.as_bytes()).map_err(Error::utf8)?;
         Ok(ZipFilePath::from_str(name))
     }
 }
@@ -428,5 +430,14 @@ mod tests {
             "Failed for input: {}",
             input
         );
+    }
+
+    #[test]
+    fn test_path_lifetime_test() {
+        let normalized_path = ZipFilePath::from_bytes(b"test.txt")
+            .try_normalize()
+            .unwrap();
+        assert_eq!(normalized_path.as_ref(), "test.txt");
+        assert_eq!(normalized_path.len(), 8);
     }
 }
