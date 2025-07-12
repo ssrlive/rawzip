@@ -1,6 +1,7 @@
 use crate::{
     crc,
     errors::ErrorKind,
+    mode::CREATOR_UNIX,
     path::{NormalizedPath, NormalizedPathBuf, ZipFilePath},
     time::{DosDateTime, UtcDateTime, EXTENDED_TIMESTAMP_ID},
     CompressionMethod, DataDescriptor, Error, ZipLocalFileHeaderFixed, CENTRAL_HEADER_SIGNATURE,
@@ -192,6 +193,7 @@ where
             crc: 0,
             flags,
             modification_time: options.modification_time,
+            unix_permissions: options.unix_permissions,
         };
         self.files.push(file_header);
 
@@ -230,6 +232,7 @@ where
             options.compression_method,
             flags,
             options.modification_time,
+            options.unix_permissions,
         ))
     }
 
@@ -256,14 +259,18 @@ where
                 .write_all(&CENTRAL_HEADER_SIGNATURE.to_le_bytes())?;
 
             // Version made by and version needed to extract
-            let version = if file.needs_zip64() {
+            let version_needed = if file.needs_zip64() {
                 ZIP64_VERSION_NEEDED
             } else {
                 20
             };
 
-            self.writer.write_all(&version.to_le_bytes())?; // Version made by
-            self.writer.write_all(&version.to_le_bytes())?; // Version needed to extract
+            // Set version_made_by to indicate Unix when Unix permissions are present
+            let version_made_by_hi = file.unix_permissions.map(|_| CREATOR_UNIX).unwrap_or(0);
+            let version_made_by = (version_made_by_hi << 8) | version_needed;
+
+            self.writer.write_all(&version_made_by.to_le_bytes())?; // Version made by
+            self.writer.write_all(&version_needed.to_le_bytes())?; // Version needed to extract
 
             // General purpose bit flag
             self.writer.write_all(&file.flags.to_le_bytes())?;
@@ -308,7 +315,8 @@ where
             self.writer.write_all(&[0u8; 4])?;
 
             // External file attributes
-            self.writer.write_all(&0u32.to_le_bytes())?;
+            let external_attrs = file.unix_permissions.map(|x| x << 16).unwrap_or(0);
+            self.writer.write_all(&external_attrs.to_le_bytes())?;
 
             // Local header offset - use 0xFFFFFFFF if ZIP64
             let local_header_offset = file.local_header_offset.min(ZIP64_THRESHOLD_OFFSET) as u32;
@@ -383,6 +391,7 @@ pub struct ZipEntryWriter<'a, W> {
     compression_method: CompressionMethod,
     flags: u16,
     modification_time: Option<UtcDateTime>,
+    unix_permissions: Option<u32>,
 }
 
 impl<'a, W> ZipEntryWriter<'a, W> {
@@ -394,6 +403,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
         compression_method: CompressionMethod,
         flags: u16,
         modification_time: Option<UtcDateTime>,
+        unix_permissions: Option<u32>,
     ) -> Self {
         ZipEntryWriter {
             inner,
@@ -403,6 +413,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             compression_method,
             flags,
             modification_time,
+            unix_permissions,
         }
     }
 
@@ -456,6 +467,7 @@ impl<'a, W> ZipEntryWriter<'a, W> {
             crc: output.crc,
             flags: self.flags,
             modification_time: self.modification_time,
+            unix_permissions: self.unix_permissions,
         };
         self.inner.files.push(file_header);
 
@@ -577,6 +589,7 @@ struct FileHeader {
     crc: u32,
     flags: u16,
     modification_time: Option<UtcDateTime>,
+    unix_permissions: Option<u32>,
 }
 
 impl FileHeader {
@@ -743,6 +756,7 @@ where
 pub struct ZipEntryOptions {
     compression_method: CompressionMethod,
     modification_time: Option<UtcDateTime>,
+    unix_permissions: Option<u32>,
 }
 
 impl Default for ZipEntryOptions {
@@ -750,6 +764,7 @@ impl Default for ZipEntryOptions {
         ZipEntryOptions {
             compression_method: CompressionMethod::Store,
             modification_time: None,
+            unix_permissions: None,
         }
     }
 }
@@ -766,6 +781,20 @@ impl ZipEntryOptions {
     /// Only accepts UTC timestamps to ensure Extended Timestamp fields are written correctly.
     pub fn modification_time(mut self, modification_time: UtcDateTime) -> Self {
         self.modification_time = Some(modification_time);
+        self
+    }
+
+    /// Sets the Unix permissions for the new file entry.
+    ///
+    /// Accepts either:
+    /// - Basic permission bits (e.g., 0o644 for rw-r--r--, 0o755 for rwxr-xr-x)
+    /// - Full Unix mode including file type (e.g., 0o100644 for regular file, 0o040755 for directory)
+    /// - Special permission bits are preserved (SUID: 0o4000, SGID: 0o2000, sticky: 0o1000)
+    ///
+    /// When set, the archive will be created with Unix-compatible "version made by" field
+    /// to ensure proper interpretation of the permissions by zip readers.
+    pub fn unix_permissions(mut self, permissions: u32) -> Self {
+        self.unix_permissions = Some(permissions);
         self
     }
 }

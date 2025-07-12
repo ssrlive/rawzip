@@ -6,6 +6,7 @@ use std::io::Cursor;
 use std::path::Path;
 
 mod modification_time_tests;
+mod permission_tests;
 mod utf8_tests;
 mod zip64_tests;
 
