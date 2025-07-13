@@ -1,19 +1,23 @@
 //! Path handling for ZIP archives with type-safe raw and normalized paths.
 //!
-//! This module provides a comprehensive system for handling file paths from ZIP archives
-//! with strong safety guarantees against path traversal attacks (zip slip vulnerabilities).
+//! This module provides a comprehensive system for handling file paths from ZIP
+//! archives with strong safety guarantees against path traversal attacks (zip
+//! slip vulnerabilities).
 //!
 //! ## Path Types
 //!
-//! The module defines three main path types with different safety levels:
+//! The main type is [`ZipFilePath`], which is generic over three possible path
+//! types with different safety levels:
 //!
-//! - [`RawPath`]: Direct bytes from ZIP archive (⚠️ may contain malicious paths)
+//! - [`RawPath`]: Direct bytes from ZIP archive (⚠️ may contain malicious
+//!   paths)
 //! - [`NormalizedPath`]: Validated and sanitized path
 //! - [`NormalizedPathBuf`]: Owned version of normalized path
 //!
 //! ## Raw Paths
 //!
-//! Raw paths provide direct access to the original bytes from the ZIP file without any validation.
+//! Raw paths provide direct access to the original bytes from the ZIP file
+//! without any validation.
 //!
 //! May contain the following:
 //!
@@ -25,10 +29,13 @@
 //!
 //! Normalized paths have been validated and sanitized according to these rules:
 //!
-//! - Assumed to be UTF-8 ([zip file names aren't always UTF-8](https://fasterthanli.me/articles/the-case-for-sans-io#character-encoding-differences))
+//! - Assumed to be UTF-8 ([zip file names aren't always
+//!   UTF-8](https://fasterthanli.me/articles/the-case-for-sans-io#character-encoding-differences))
 //! - Path separators: All backslashes (`\`) converted to forward slashes (`/`)
-//! - Redundant slashes: Multiple consecutive slashes (`//`) reduced to single slash
-//! - Relative components: Current directory (`.`) and parent directory (`..`) resolved
+//! - Redundant slashes: Multiple consecutive slashes (`//`) reduced to single
+//!   slash
+//! - Relative components: Current directory (`.`) and parent directory (`..`)
+//!   resolved
 //! - Leading separators: Absolute paths made relative (`/foo` → `foo`)
 //! - Drive letters: Windows drive prefixes removed (`C:\\foo` → `foo`)
 //! - Escape prevention: Paths cannot escape the archive root directory
@@ -38,13 +45,15 @@
 //! ```rust
 //! use rawzip::path::ZipFilePath;
 //!
-//! // From raw bytes (unsafe - requires normalization)
+//! // From raw bytes
 //! let raw_path = ZipFilePath::from_bytes(b"../../../etc/passwd");
 //! let safe_path = raw_path.try_normalize()?; // Returns error if invalid UTF-8
+//! assert_eq!(safe_path.as_ref(), "etc/passwd");
 //!
-//! // From string (automatically normalized)
+//! // From string
 //! let normalized_path = ZipFilePath::from_str("dir\\file.txt");
 //! assert_eq!(normalized_path.as_ref(), "dir/file.txt");
+//! assert_eq!(String::from(normalized_path), "dir/file.txt");
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
@@ -74,9 +83,9 @@
 //!
 //! ## UTF-8 Encoding Detection
 //!
-//! The library automatically detects when paths contain characters that require UTF-8 encoding
-//! in ZIP files (beyond the default CP-437 encoding). This information is used internally
-//! when creating ZIP archives.
+//! The library automatically detects when paths contain characters that require
+//! UTF-8 encoding in ZIP files (beyond the default CP-437 encoding). This
+//! information is used internally when creating ZIP archives.
 
 use crate::{Error, ZipStr};
 use std::borrow::Cow;
@@ -86,14 +95,12 @@ use std::borrow::Cow;
 /// **Warning**: Contains unvalidated bytes that may include malicious path components.
 /// Use [`ZipFilePath::try_normalize()`] to create a safe path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct RawPath<'a> {
-    data: ZipStr<'a>,
-}
+pub struct RawPath<'a>(ZipStr<'a>);
 
 impl AsRef<[u8]> for RawPath<'_> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.data.as_bytes()
+        self.0.as_bytes()
     }
 }
 
@@ -102,21 +109,19 @@ impl AsRef<[u8]> for RawPath<'_> {
 /// This path has been validated and sanitized according to the normalization
 /// rules described in the module documentation.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct NormalizedPath<'a> {
-    data: Cow<'a, str>,
-}
+pub struct NormalizedPath<'a>(Cow<'a, str>);
 
 impl AsRef<[u8]> for NormalizedPath<'_> {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.data.as_bytes()
+        self.0.as_bytes()
     }
 }
 
 impl AsRef<str> for NormalizedPath<'_> {
     #[inline]
     fn as_ref(&self) -> &str {
-        self.data.as_ref()
+        self.0.as_ref()
     }
 }
 
@@ -124,21 +129,19 @@ impl AsRef<str> for NormalizedPath<'_> {
 ///
 /// Owned version of [`NormalizedPath`] with the same safety guarantees.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct NormalizedPathBuf {
-    data: String,
-}
+pub struct NormalizedPathBuf(String);
 
 impl AsRef<[u8]> for NormalizedPathBuf {
     #[inline]
     fn as_ref(&self) -> &[u8] {
-        self.data.as_bytes()
+        self.0.as_bytes()
     }
 }
 
 impl AsRef<str> for NormalizedPathBuf {
     #[inline]
     fn as_ref(&self) -> &str {
-        &self.data
+        &self.0
     }
 }
 
@@ -156,9 +159,7 @@ impl ZipFilePath<()> {
     #[inline]
     pub fn from_bytes(data: &[u8]) -> ZipFilePath<RawPath<'_>> {
         ZipFilePath {
-            data: RawPath {
-                data: ZipStr::new(data),
-            },
+            data: RawPath(ZipStr::new(data)),
         }
     }
 
@@ -177,9 +178,7 @@ impl ZipFilePath<()> {
             ) {
                 // slow path: intrusive string manipulations required
                 return ZipFilePath {
-                    data: NormalizedPath {
-                        data: Cow::Owned(Self::normalize_alloc(name)),
-                    },
+                    data: NormalizedPath(Cow::Owned(Self::normalize_alloc(name))),
                 };
             }
             last = c;
@@ -193,9 +192,7 @@ impl ZipFilePath<()> {
                 [b'/', ..] => name.trim_start_matches('/'),
                 _ => {
                     return ZipFilePath {
-                        data: NormalizedPath {
-                            data: Cow::Borrowed(name),
-                        },
+                        data: NormalizedPath(Cow::Borrowed(name)),
                     }
                 }
             }
@@ -286,7 +283,7 @@ where
 impl AsRef<[u8]> for ZipFilePath<RawPath<'_>> {
     /// Returns the raw bytes of the ZIP file path.
     fn as_ref(&self) -> &[u8] {
-        self.data.data.as_bytes()
+        self.data.0.as_bytes()
     }
 }
 
@@ -300,7 +297,7 @@ impl<'a> ZipFilePath<RawPath<'a>> {
     /// Returns an error if the file path contains invalid UTF-8 sequences.
     #[inline]
     pub fn try_normalize(self) -> Result<ZipFilePath<NormalizedPath<'a>>, Error> {
-        let raw_data = self.data.data;
+        let raw_data = self.data.0;
         let name = std::str::from_utf8(raw_data.as_bytes()).map_err(Error::utf8)?;
         Ok(ZipFilePath::from_str(name))
     }
@@ -309,40 +306,39 @@ impl<'a> ZipFilePath<RawPath<'a>> {
 impl AsRef<str> for ZipFilePath<NormalizedPath<'_>> {
     #[inline]
     fn as_ref(&self) -> &str {
-        self.data.data.as_ref()
+        self.data.0.as_ref()
     }
 }
 
 impl AsRef<str> for ZipFilePath<NormalizedPathBuf> {
     #[inline]
     fn as_ref(&self) -> &str {
-        self.data.data.as_ref()
+        self.data.0.as_ref()
     }
 }
 
-impl std::str::FromStr for ZipFilePath<NormalizedPathBuf> {
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ZipFilePath::from_str(s).into_owned())
-    }
-}
-
-impl ZipFilePath<NormalizedPathBuf> {
-    /// Consumes self to return the underlying string
+impl From<ZipFilePath<NormalizedPathBuf>> for String {
     #[inline]
-    pub fn into_string(self) -> String {
-        self.data.data
+    fn from(path: ZipFilePath<NormalizedPathBuf>) -> Self {
+        path.data.0
+    }
+}
+
+impl From<ZipFilePath<NormalizedPath<'_>>> for String {
+    #[inline]
+    fn from(path: ZipFilePath<NormalizedPath<'_>>) -> Self {
+        path.data.0.into_owned()
     }
 }
 
 impl ZipFilePath<NormalizedPath<'_>> {
+    /// Converts this borrowed path into an owned path.
+    ///
+    /// Similar to [`Cow::into_owned`]
     #[inline]
     pub fn into_owned(self) -> ZipFilePath<NormalizedPathBuf> {
         ZipFilePath {
-            data: NormalizedPathBuf {
-                data: self.data.data.into_owned(),
-            },
+            data: NormalizedPathBuf(self.data.0.into_owned()),
         }
     }
 }
