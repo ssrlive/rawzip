@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Show uncompressed size, or empty for directories
         let size_str = if entry.is_dir() {
-            "".to_string()
+            format!("{:9}", "")
         } else {
             format!("{:9}", uncompressed_size)
         };
