@@ -116,15 +116,15 @@ impl<W> ZipArchiveWriter<W> {
 
 /// A builder for creating a new file entry in a ZIP archive.
 #[derive(Debug)]
-pub struct ZipFileBuilder<'a, W> {
-    archive: &'a mut ZipArchiveWriter<W>,
-    name: &'a str,
+pub struct ZipFileBuilder<'archive, 'name, W> {
+    archive: &'archive mut ZipArchiveWriter<W>,
+    name: &'name str,
     compression_method: CompressionMethod,
     modification_time: Option<UtcDateTime>,
     unix_permissions: Option<u32>,
 }
 
-impl<'a, W> ZipFileBuilder<'a, W>
+impl<'archive, W> ZipFileBuilder<'archive, '_, W>
 where
     W: Write,
 {
@@ -163,7 +163,7 @@ where
     }
 
     /// Creates the file entry and returns a writer for the file's content.
-    pub fn create(self) -> Result<ZipEntryWriter<'a, W>, Error> {
+    pub fn create(self) -> Result<ZipEntryWriter<'archive, W>, Error> {
         let options = ZipEntryOptions {
             compression_method: self.compression_method,
             modification_time: self.modification_time,
@@ -347,7 +347,7 @@ where
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     #[must_use]
-    pub fn new_file<'a>(&'a mut self, name: &'a str) -> ZipFileBuilder<'a, W> {
+    pub fn new_file<'name>(&mut self, name: &'name str) -> ZipFileBuilder<'_, 'name, W> {
         ZipFileBuilder {
             archive: self,
             name,
@@ -358,11 +358,11 @@ where
     }
 
     /// Adds a new file to the archive with options (internal method).
-    fn new_file_with_options<'a>(
-        &'a mut self,
+    fn new_file_with_options(
+        &mut self,
         name: &str,
         options: ZipEntryOptions,
-    ) -> Result<ZipEntryWriter<'a, W>, Error> {
+    ) -> Result<ZipEntryWriter<'_, W>, Error> {
         let file_path = ZipFilePath::from_str(name.trim_end_matches('/'));
 
         if file_path.len() > u16::MAX as usize {
@@ -910,4 +910,30 @@ struct ZipEntryOptions {
     compression_method: CompressionMethod,
     modification_time: Option<UtcDateTime>,
     unix_permissions: Option<u32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_name_lifetime_independence() {
+        let mut output = Cursor::new(Vec::new());
+        let mut archive = ZipArchiveWriter::new(&mut output);
+
+        // Test file builder with temporary name
+        {
+            let mut file = {
+                let temp_name = format!("temp-{}.txt", 42);
+                archive.new_file(&temp_name).create().unwrap()
+            };
+            let mut writer = ZipDataWriter::new(&mut file);
+            writer.write_all(b"test").unwrap();
+            let (_, desc) = writer.finish().unwrap();
+            file.finish(desc).unwrap();
+        }
+
+        archive.finish().unwrap();
+    }
 }
