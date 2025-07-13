@@ -115,7 +115,7 @@ What consumers must handle:
 
 ## Benchmarks
 
-![bench-parsing.png](assets/rawzip-performance-comparison.png)
+![Chart depicting rawzip performance of parsing through the central directory compared to other Rust zip implementations (view image on github if reading on docs.rs)](assets/rawzip-performance-comparison.png)
 
 If you want to rip through zips as fast as possible, rawzip is for you. Doesn't matter if the zips are 100 GB+ with 200k entries, nothing will be faster.
 
