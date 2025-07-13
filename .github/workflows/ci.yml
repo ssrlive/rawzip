@@ -121,3 +121,50 @@ jobs:
           toolchain: "nightly"
       - run: cargo install cargo-fuzz
       - run: cargo fuzz build fuzz_zip
+
+  big-example:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - name: Run big example
+        run: cargo run --release --example big
+      - name: Verify archive with zipinfo
+        run: |
+          ZIPINFO_OUTPUT=$(zipinfo big.zip)
+          echo "$ZIPINFO_OUTPUT"
+
+          # Get total entry count from zipinfo output
+          # zipinfo output typically ends with a line like "100001 files, 5368709220 bytes uncompressed, ..."
+          ENTRY_COUNT=$(echo "$ZIPINFO_OUTPUT" | tail -1 | awk '{print $1}')
+
+          # Verify we have exactly 100,001 entries
+          if [ "$ENTRY_COUNT" != "100001" ]; then
+            echo "Expected 100,001 entries, but found $ENTRY_COUNT"
+            exit 1
+          fi
+
+          # Check for the big_zeros.dat file and verify its uncompressed size
+          BIG_FILE_INFO=$(echo "$ZIPINFO_OUTPUT" | grep "big_zeros.dat")
+          echo "Big file info: $BIG_FILE_INFO"
+
+          # Extract uncompressed size (should be 5GB = 5,368,709,120 bytes)
+          UNCOMPRESSED_SIZE=$(echo "$BIG_FILE_INFO" | awk '{print $4}')
+
+          # Verify it's 5GB (5,368,709,120 bytes)
+          if [ "$UNCOMPRESSED_SIZE" != "5368709120" ]; then
+            echo "Expected big_zeros.dat to be 5GB (5,368,709,120 bytes), but found $UNCOMPRESSED_SIZE"
+            exit 1
+          fi
+
+          # Verify compression method is Zstd (method 93)
+          COMPRESSION_METHOD=$(echo "$BIG_FILE_INFO" | awk '{print $6}')
+
+          if [ "$COMPRESSION_METHOD" != "u093" ]; then
+            echo "Expected Zstd compression (method 93), but found: $COMPRESSION_METHOD"
+            exit 1
+          fi
