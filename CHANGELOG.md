@@ -1,3 +1,66 @@
+## v0.3.0 - July 12th, 2025
+
+### Breaking Changes
+
+As an author of several libraries and applications that rely rawzip, breaking changes pain me. Especially as one mantra of rawzip is to be a dependable foundation where one expects long term stability and infrequent releases. I think with this release, the goal is close to being realized.
+
+There are three breaking changes.
+
+The following methods have been replaced:
+
+```rust
+ZipFileHeaderRecord::file_safe_path()
+ZipFileHeaderRecord::file_raw_path()
+```
+
+and consolidated with a single entrypoint:
+
+```rust
+ZipFileHeaderRecord::file_path()
+```
+
+Getting the raw bytes of the file path becomes:
+
+```rust
+let raw = entry.file_path().as_ref();
+```
+
+And retrieving the UTF-8 string becomes:
+
+```rust
+let s = entry.file_path().try_normalize()?.as_ref();
+let owned = String::from(entry.file_path().try_normalize()?);
+```
+
+Another breaking change is the writer API. `ZipEntryOptions` has been removed:
+
+```rust
+archive.new_dir("my_dir/")?;
+archive.new_file(
+    "my_dir/file.txt",
+    rawzip::ZipEntryOptions::default().compression_method(CompressionMethod::Deflate)
+)?;
+```
+
+And is replaced with a builder API.
+
+```rust
+archive.new_dir("my_dir/").create()?;
+archive.new_file("file.txt")
+    .compression_method(CompressionMethod::Deflate)
+    .create()?;
+```
+
+The last breaking change is how the central directory iteration is terminated. Previously, iteration would terminate when an entry would fail to parse and the anticipated number of entries had been encountered. Now, iteration is terminated once the end of central directory marker is reached. 
+
+## Additional changes
+
+- Added zip64 write capabilities
+- Read and write last modified timestamps and permissions on zip and zip64 files
+- Added `ZipEntry::compressed_data_range()` methods for offsets of compressed data to guard against overlapping zip entries
+- Improved zip writer's UTF-8 flag handling
+- Improved performance of central directory iteration for slice and readers
+
 ## v0.2.0 - May 26th, 2025
 
 - Expose `ErrorKind` as part of public API
