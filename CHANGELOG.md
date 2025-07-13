@@ -1,3 +1,7 @@
+## v0.3.1 - July 13th, 2025
+
+- Fix file name lifetime tied to the archive writer
+
 ## v0.3.0 - July 12th, 2025
 
 ### Breaking Changes
