@@ -139,6 +139,6 @@ fn get_unix_permissions(metadata: &fs::Metadata) -> Option<u32> {
 }
 
 #[cfg(not(unix))]
-fn get_unix_permissions(metadata: &fs::Metadata) -> Option<u32> {
+fn get_unix_permissions(_metadata: &fs::Metadata) -> Option<u32> {
     None
 }
