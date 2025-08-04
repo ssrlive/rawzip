@@ -15,6 +15,7 @@ rust-version = "1.70"
 [dependencies]
 
 [dev-dependencies]
+filetime = "0.2"
 flate2 = { version = "1.0.35" }
 jiff = { version = "0.2.15", default-features = false }
 paste = "1.0"
