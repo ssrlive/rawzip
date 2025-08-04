@@ -259,7 +259,7 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
         #[cfg(windows)]
         {
             // Detect if the file should be marked as readonly
-            if entry.mode.permissions() & 0o200 == 0 {
+            if entry.mode().permissions() & 0o200 == 0 {
                 let mut perms = std::fs::metadata(&out_path)
                     .map_err(|e| {
                         ExtractionError::io_context(
