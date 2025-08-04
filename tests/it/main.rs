@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{Cursor, Write};
 use std::path::Path;
 
+mod concatenated_zip_tests;
 mod modification_time_tests;
 mod permission_tests;
 mod utf8_tests;

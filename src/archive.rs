@@ -304,6 +304,8 @@ impl<'data> Iterator for ZipSliceEntries<'data> {
 ///     Ok(())
 /// }
 /// ```
+///
+/// For more complex use cases, use the [`ZipLocator`] to locate an archive.
 #[derive(Debug, Clone)]
 pub struct ZipArchive<R> {
     pub(crate) reader: R,
@@ -352,15 +354,16 @@ impl ZipArchive<()> {
     /// }
     /// ```
     pub fn from_seekable<R>(
-        reader: R,
+        mut reader: R,
         buffer: &mut [u8],
     ) -> Result<ZipArchive<MutexReader<R>>, Error>
     where
         R: Read + Seek,
     {
+        let end_offset = reader.seek(std::io::SeekFrom::End(0))?;
         let reader = MutexReader::new(reader);
         ZipLocator::new()
-            .locate_in_reader(reader, buffer)
+            .locate_in_reader(reader, buffer, end_offset)
             .map_err(|(_, e)| e)
     }
 }

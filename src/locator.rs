@@ -136,7 +136,7 @@ impl ZipLocator {
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let file = File::open("assets/readme.zip")?;
-    /// let mut buffer = vec![0; 1024 * 4]; // 4 KiB buffer
+    /// let mut buffer = vec![0; rawzip::RECOMMENDED_BUFFER_SIZE];
     /// let locator = ZipLocator::new();
     ///
     /// match locator.locate_in_file(file, &mut buffer) {
@@ -155,23 +155,70 @@ impl ZipLocator {
         file: std::fs::File,
         buffer: &mut [u8],
     ) -> Result<ZipArchive<FileReader>, (File, Error)> {
-        let reader = FileReader::from(file);
-        self.locate_in_reader(reader, buffer)
+        let mut reader = FileReader::from(file);
+        let end_offset = match reader.seek(std::io::SeekFrom::End(0)) {
+            Ok(offset) => offset,
+            Err(e) => return Err((reader.into_inner(), Error::from(e))),
+        };
+        self.locate_in_reader(reader, buffer, end_offset)
             .map_err(|(fr, e)| (fr.into_inner(), e))
     }
 
-    /// Locates the EOCD record in a reader that implements positioned io and
-    /// can seek (for determining length of data).
+    /// Locates the EOCD record in a reader, treating the specified end offset
+    /// as the starting point when searching backwards.
+    ///
+    /// This method is useful for several scenarios:
+    ///
+    /// - Zip archive is nowhere near the end of the reader
+    /// - Zip archives are concatenated
+    ///
+    /// For seekable readers, you can determine the end_offset by seeking to the
+    /// end of the stream.
+    ///
+    /// Note that the zip locator may request data passed the end offset in
+    /// order to read the entire end of the central directory record + comment.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rawzip::{ZipLocator, FileReader};
+    /// use std::fs::File;
+    /// use std::io::Seek;
+    ///
+    /// # fn main() -> Result<(), rawzip::Error> {
+    /// let file = File::open("assets/test.zip").unwrap();
+    /// let mut reader = FileReader::from(file);
+    /// let mut buffer = vec![0; rawzip::RECOMMENDED_BUFFER_SIZE];
+    /// let locator = ZipLocator::new();
+    ///
+    /// // An example of determining the end offset when you don't
+    /// // the length but have a seekable reader.
+    /// let end_offset = reader.seek(std::io::SeekFrom::End(0)).unwrap();
+    /// let archive = locator.locate_in_reader(reader, &mut buffer, end_offset)
+    ///     .map_err(|(_, e)| e)?;
+    ///
+    /// // Maybe there is another zip archive to be found.
+    /// // So use the previous archive's start as the end
+    /// match locator.locate_in_reader(archive.get_ref(), &mut buffer, archive.base_offset()) {
+    ///    Ok(previous_archive) => {
+    ///        println!("Found previous ZIP archive!");
+    ///    }
+    ///    Err((_, _)) => println!("No previous ZIP archive found"),
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn locate_in_reader<R>(
         &self,
         mut reader: R,
         buffer: &mut [u8],
+        end_offset: u64,
     ) -> Result<ZipArchive<R>, (R, Error)>
     where
-        R: ReaderAt + Seek,
+        R: ReaderAt,
     {
         let location_result =
-            find_end_of_central_dir_with_seek(&mut reader, buffer, self.max_search_space);
+            find_end_of_central_dir(&mut reader, buffer, self.max_search_space, end_offset);
 
         let (stream_pos, buffer_pos, buffer_valid_len) = match location_result {
             Ok(Some(location_tuple)) => location_tuple,
@@ -473,25 +520,25 @@ pub(crate) fn find_end_of_central_dir_signature(
     .map(|pos| pos + start_search)
 }
 
-pub(crate) fn find_end_of_central_dir_with_seek<T>(
-    mut reader: T,
+pub(crate) fn find_end_of_central_dir<T>(
+    reader: T,
     buffer: &mut [u8],
     max_search_space: u64,
+    end_offset: u64,
 ) -> std::io::Result<Option<(u64, usize, usize)>>
 where
-    T: ReaderAt + Seek,
+    T: ReaderAt,
 {
     if buffer.len() < END_OF_CENTRAL_DIR_SIGNAUTRE_BYTES.len() {
         debug_assert!(false, "buffer not big enough to hold signature");
         return Ok(None);
     }
 
-    let len = reader.seek(std::io::SeekFrom::End(0))?;
-    let max_back = len.saturating_sub(max_search_space);
-    let mut offset = len;
+    let max_back = end_offset.saturating_sub(max_search_space);
+    let mut offset = end_offset;
 
     // The amount of data the remains in the stream
-    let mut remaining = len - max_back;
+    let mut remaining = end_offset - max_back;
 
     // The number of bytes that were translated from the front to the back
     let mut carry_over = 0;
@@ -561,9 +608,9 @@ mod tests {
         let result = find_end_of_central_dir_signature(&data, max_search_space as usize).unwrap();
 
         let mut buffer = vec![0u8; chunk_size.max(4) as usize];
-        let reader = std::io::Cursor::new(data);
+        let reader = std::io::Cursor::new(&data);
         let (index, buffer_index, buffer_valid_len) =
-            find_end_of_central_dir_with_seek(reader, &mut buffer, max_search_space)
+            find_end_of_central_dir(reader, &mut buffer, max_search_space, data.len() as u64)
                 .unwrap()
                 .unwrap();
 
@@ -596,9 +643,10 @@ mod tests {
         let mem = find_end_of_central_dir_signature(&data, max_search_space as usize);
 
         let mut buffer = vec![0u8; chunk_size.max(4) as usize];
-        let reader = std::io::Cursor::new(data);
+        let reader = std::io::Cursor::new(&data);
         let curse =
-            find_end_of_central_dir_with_seek(reader, &mut buffer, max_search_space).unwrap();
+            find_end_of_central_dir(reader, &mut buffer, max_search_space, data.len() as u64)
+                .unwrap();
 
         assert_eq!(mem.map(|x| x as u64), curse.map(|(a, _, _)| a));
         if let Some((_, buffer_index, buffer_valid_len)) = curse {
@@ -658,10 +706,11 @@ mod tests {
         let result = find_end_of_central_dir_signature(input, max_search_space as usize);
         assert_eq!(result.map(|x| x as u64), expected);
 
-        let cursor = Cursor::new(input);
+        let cursor = Cursor::new(&input);
         let mut buffer = vec![0u8; buffer_size];
         let found =
-            find_end_of_central_dir_with_seek(cursor, &mut buffer, max_search_space).unwrap();
+            find_end_of_central_dir(cursor, &mut buffer, max_search_space, input.len() as u64)
+                .unwrap();
         assert_eq!(found.map(|(a, _, _)| a), expected);
 
         if expected.is_some() {

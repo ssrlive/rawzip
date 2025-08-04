@@ -67,9 +67,9 @@ fn entries(c: &mut Criterion) {
     group.bench_function("reader", |b| {
         let mut buffer = vec![0u8; rawzip::RECOMMENDED_BUFFER_SIZE];
         b.iter(|| {
-            let mut cursor = Cursor::new(&zip_data);
+            let cursor = Cursor::new(&zip_data);
             let archive = rawzip::ZipLocator::new()
-                .locate_in_reader(&mut cursor, &mut buffer)
+                .locate_in_reader(cursor, &mut buffer, zip_data.len() as u64)
                 .unwrap();
             let mut total_size = 0u64;
             let mut entries = archive.entries(&mut buffer);
