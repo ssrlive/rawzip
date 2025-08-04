@@ -1,13 +1,14 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <archive.zip> <target_dir>", args[0]);
-        std::process::exit(1);
-    }
+    let args = <Args as ::clap::Parser>::parse();
+    let default = args.verbosity.to_string();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default)).init();
 
-    let archive_path = &args[1];
-    let target_dir = &args[2];
-    extract_zip_archive(archive_path, target_dir)?;
+    let archive = &args.archive;
+    log::info!("Starting extraction of archive {archive:?}...");
+
+    extract_zip_archive(archive, &args.target_dir)?;
+
+    log::info!("Archive {archive:?} extraction completed successfully");
     Ok(())
 }
 
@@ -35,17 +36,17 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
         let file_path = match ZipFilePath::from_bytes(raw_path.as_ref()).try_normalize() {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("Skipped suspicious path: {raw_path:?}, reason: {e}");
+                let name = String::from_utf8_lossy(raw_path.as_ref()).to_string();
+                log::warn!("Skipped suspicious path: {name:?}, reason: {e}",);
                 continue;
             }
         };
-        let out_path = target_dir
-            .as_ref()
-            .join(std::path::PathBuf::from(&file_path.as_ref()));
+        let relative_path = &std::path::PathBuf::from(&file_path.as_ref());
+        let out_path = target_dir.as_ref().join(relative_path);
 
         // Check for overlapping paths
         if !written_paths.insert(out_path.clone()) {
-            eprintln!("Skipped overlapping path: {:?}", out_path);
+            log::warn!("Skipped overlapping path: {out_path:?}");
             continue;
         }
 
@@ -73,7 +74,7 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
                     std::io::copy(&mut verifier, &mut outfile)?;
                 }
                 _ => {
-                    eprintln!("Unsupported compression method {method:?} for file: {file_path:?}");
+                    log::error!("Unsupported compression method {method:?} for {relative_path:?}");
                     continue;
                 }
             }
@@ -91,7 +92,8 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
             }
 
             let mode = entry.mode().value();
-            let perms: std::fs::Permissions;
+            #[allow(unused_mut)]
+            let mut perms: std::fs::Permissions;
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -100,14 +102,54 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
             #[cfg(windows)]
             {
                 let readonly = (mode & 0o200) == 0;
-                let mut _perms = std::fs::metadata(&out_path)?.permissions();
-                _perms.set_readonly(readonly);
-                perms = _perms;
+                perms = std::fs::metadata(&out_path)?.permissions();
+                perms.set_readonly(readonly);
             }
             std::fs::set_permissions(&out_path, perms)?;
         }
-        // println!("Extracted: {out_path:?}");
+        log::trace!("Extracted: {relative_path:?}");
     }
 
     Ok(())
+}
+
+/// Extract example for the Rust rawzip crate
+#[derive(Debug, Clone, clap::Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Args {
+    /// Path to the ZIP archive to extract
+    #[arg(short, long, value_name = "PATH")]
+    pub archive: std::path::PathBuf,
+
+    /// Directory to extract files into
+    #[arg(short, long, value_name = "DIR")]
+    pub target_dir: std::path::PathBuf,
+
+    /// Verbosity level for logging
+    #[arg(short, long, value_name = "level", value_enum, default_value = "info")]
+    pub verbosity: ArgVerbosity,
+}
+
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
+pub enum ArgVerbosity {
+    Off = 0,
+    Error,
+    Warn,
+    #[default]
+    Info,
+    Debug,
+    Trace,
+}
+
+impl std::fmt::Display for ArgVerbosity {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ArgVerbosity::Off => write!(f, "off"),
+            ArgVerbosity::Error => write!(f, "error"),
+            ArgVerbosity::Warn => write!(f, "warn"),
+            ArgVerbosity::Info => write!(f, "info"),
+            ArgVerbosity::Debug => write!(f, "debug"),
+            ArgVerbosity::Trace => write!(f, "trace"),
+        }
+    }
 }
