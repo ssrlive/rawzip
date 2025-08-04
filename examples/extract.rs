@@ -15,7 +15,7 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
     archive_path: P,
     target_dir: P,
 ) -> std::io::Result<()> {
-    use rawzip::{CompressionMethod, ZipArchive, RECOMMENDED_BUFFER_SIZE};
+    use rawzip::{path::ZipFilePath, CompressionMethod, ZipArchive, RECOMMENDED_BUFFER_SIZE};
     use std::io::{Error, ErrorKind::InvalidData};
 
     let file = std::fs::File::open(archive_path)?;
@@ -23,15 +23,31 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
     let archive = ZipArchive::from_file(file, &mut buffer)
         .map_err(|e| Error::new(InvalidData, format!("Failed to read ZIP archive: {e}")))?;
 
+    let mut written_paths = std::collections::HashSet::new();
+
     let mut entries = archive.entries(&mut buffer);
     while let Some(entry) = entries
         .next_entry()
         .map_err(|e| Error::new(InvalidData, format!("Failed to read entry: {e}")))?
     {
-        let file_path = String::from_utf8_lossy(entry.file_path().as_ref()).to_string();
+        let raw_path = entry.file_path();
+        // Avoid directory traversal attacks by normalizing the path
+        let file_path = match ZipFilePath::from_bytes(raw_path.as_ref()).try_normalize() {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Skipped suspicious path: {raw_path:?}, reason: {e}");
+                continue;
+            }
+        };
         let out_path = target_dir
             .as_ref()
-            .join(std::path::PathBuf::from(&file_path));
+            .join(std::path::PathBuf::from(&file_path.as_ref()));
+
+        // Check for overlapping paths
+        if !written_paths.insert(out_path.clone()) {
+            eprintln!("Skipped overlapping path: {:?}", out_path);
+            continue;
+        }
 
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;
@@ -58,8 +74,25 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
                 }
                 _ => {
                     eprintln!("Unsupported compression method {method:?} for file: {file_path:?}");
+                    continue;
                 }
             }
+
+            let mode = entry.mode().value();
+            let perms: std::fs::Permissions;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                perms = std::fs::Permissions::from_mode(mode);
+            }
+            #[cfg(windows)]
+            {
+                let readonly = (mode & 0o200) == 0;
+                let mut _perms = std::fs::metadata(&out_path)?.permissions();
+                _perms.set_readonly(readonly);
+                perms = _perms;
+            }
+                std::fs::set_permissions(&out_path, perms)?;
         }
         // println!("Extracted: {out_path:?}");
     }
