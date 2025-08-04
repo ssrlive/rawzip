@@ -78,6 +78,18 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
                 }
             }
 
+            match entry.last_modified() {
+                rawzip::time::ZipDateTimeKind::Utc(dt) => {
+                    let mtime = filetime::FileTime::from_unix_time(dt.to_unix(), dt.nanosecond());
+                    filetime::set_file_mtime(&out_path, mtime)?;
+                }
+                rawzip::time::ZipDateTimeKind::Local(_dt) => {
+                    // need rawzip author's help
+                    // let mtime = filetime::FileTime::from_unix_time(_dt.to_unix(), _dt.nanosecond());
+                    // filetime::set_file_mtime(&out_path, mtime)?;
+                }
+            }
+
             let mode = entry.mode().value();
             let perms: std::fs::Permissions;
             #[cfg(unix)]
@@ -92,7 +104,7 @@ fn extract_zip_archive<P: AsRef<std::path::Path>>(
                 _perms.set_readonly(readonly);
                 perms = _perms;
             }
-                std::fs::set_permissions(&out_path, perms)?;
+            std::fs::set_permissions(&out_path, perms)?;
         }
         // println!("Extracted: {out_path:?}");
     }
